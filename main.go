@@ -6,17 +6,18 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/aws/external"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/schollz/progressbar/v2"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/aws/external"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 // represents the duration from making an S3 GetObject request to getting the first byte and last byte
@@ -54,7 +55,6 @@ const maxThreads = 64
 
 // default settings
 const defaultRegion = "us-west-2"
-const bucketNamePrefix = "s3-benchmark"
 
 // the hostname or EC2 instance id
 var hostname = getHostname()
@@ -70,7 +70,10 @@ var instanceType = getInstanceType()
 
 // the script will automatically create an S3 bucket to use for the test, and it tries to get a unique bucket name
 // by generating a sha hash of the hostname
-var bucketName = fmt.Sprintf("%s-%x", bucketNamePrefix, sha1.Sum([]byte(hostname)))
+var bucketName = "maxi-s3-benchmark"
+
+// We use one very large object for our tests
+var objectName = "largefile.bin"
 
 // the min and max object sizes to test - 1 = 1 KB, and the size doubles with every increment
 var payloadsMin int
@@ -92,9 +95,6 @@ var cleanupOnly bool
 // if not empty, the results of the test get uploaded to S3 using this key prefix
 var csvResults string
 
-// flag to create the s3 bucket
-var createBucket bool
-
 // the S3 SDK client
 var s3Client *s3.S3
 
@@ -112,9 +112,6 @@ func main() {
 		return
 	}
 
-	// create the S3 bucket and upload the test data
-	setup()
-
 	// run the test against the uploaded data
 	runBenchmark()
 
@@ -122,26 +119,39 @@ func main() {
 	cleanup()
 }
 
+func minInt(n1 int, n2 int) int {
+	if n1 < n2 {
+		return n1
+	}
+	return n2
+}
+
 func parseFlags() {
-	threadsMinArg := flag.Int("threads-min", 8, "The minimum number of threads to use when fetching objects from S3.")
-	threadsMaxArg := flag.Int("threads-max", 16, "The maximum number of threads to use when fetching objects from S3.")
+	hwThreads := runtime.NumCPU()
+	hwCores := minInt(hwThreads/2, 1) // assume hyperthreading
+	threadsMinArg := flag.Int("threads-min", minInt(hwCores, 8), "The minimum number of threads to use when fetching objects from S3.")
+	threadsMaxArg := flag.Int("threads-max", minInt(hwThreads, 32), "The maximum number of threads to use when fetching objects from S3.")
 	payloadsMinArg := flag.Int("payloads-min", 1, "The minimum object size to test, with 1 = 1 KB, and every increment is a double of the previous value.")
 	payloadsMaxArg := flag.Int("payloads-max", 10, "The maximum object size to test, with 1 = 1 KB, and every increment is a double of the previous value.")
 	samplesArg := flag.Int("samples", 1000, "The number of samples to collect for each test of a single object size and thread count.")
-	bucketNameArg := flag.String("bucket-name", "", "Cleans up all the S3 artifacts used by the benchmarks.")
+	bucketNameArg := flag.String("bucket-name", "maxi-s3-test", "The name of the bucket where the test object is located")
+	objectNameArg := flag.String("object-name", "", "The name of the large object file")
 	regionArg := flag.String("region", "", "Sets the AWS region to use for the S3 bucket. Only applies if the bucket doesn't already exist.")
 	endpointArg := flag.String("endpoint", "", "Sets the S3 endpoint to use. Only applies to non-AWS, S3-compatible stores.")
 	fullArg := flag.Bool("full", false, "Runs the full exhaustive test, and overrides the threads and payload arguments.")
 	throttlingModeArg := flag.Bool("throttling-mode", false, "Runs a continuous test to find out when EC2 network throttling kicks in.")
 	cleanupArg := flag.Bool("cleanup", false, "Cleans all the objects uploaded to S3 for this test.")
 	csvResultsArg := flag.String("upload-csv", "", "Uploads the test results to S3 as a CSV file.")
-	createBucketArg := flag.Bool("create-bucket", true, "Create the bucket")
-	
+
 	// parse the arguments and set all the global variables accordingly
 	flag.Parse()
 
 	if *bucketNameArg != "" {
 		bucketName = *bucketNameArg
+	}
+
+	if *objectNameArg != "" {
+		objectName = *objectNameArg
 	}
 
 	if *regionArg != "" {
@@ -159,7 +169,6 @@ func parseFlags() {
 	samples = *samplesArg
 	cleanupOnly = *cleanupArg
 	csvResults = *csvResultsArg
-	createBucket = *createBucketArg
 
 	if payloadsMin > payloadsMax {
 		payloadsMin = payloadsMax
@@ -218,95 +227,8 @@ func setupS3Client() {
 
 func setup() {
 	fmt.Print("\n--- \033[1;32mSETUP\033[0m --------------------------------------------------------------------------------------------------------------------\n\n")
-	if createBucket {
-		// try to create the S3 bucket
-		createBucketReq := s3Client.CreateBucketRequest(&s3.CreateBucketInput{
-			Bucket: aws.String(bucketName),
-			CreateBucketConfiguration: &s3.CreateBucketConfiguration{
-				LocationConstraint: s3.NormalizeBucketLocation(s3.BucketLocationConstraint(region)),
-			},
-		})
-
-		// AWS S3 has this peculiar issue in which if you want to create bucket in us-east-1 region, you should NOT specify 
-		// any location constraint. https://github.com/boto/boto3/issues/125
-		if strings.ToLower(region) == "us-east-1" {
-			createBucketReq = s3Client.CreateBucketRequest(&s3.CreateBucketInput{
-				Bucket: aws.String(bucketName),
-			})
-		}
-
-		_, err := createBucketReq.Send()
-
-		// if the error is because the bucket already exists, ignore the error
-		if err != nil && !strings.Contains(err.Error(), "BucketAlreadyOwnedByYou:") {
-			panic("Failed to create S3 bucket: " + err.Error())
-		}	
-	}
-
-	// an object size iterator that starts from 1 KB and doubles the size on every iteration
-	generatePayload := payloadSizeGenerator()
-
-	// loop over every payload size
-	for p := 1; p <= payloadsMax; p++ {
-		// get an object size from the iterator
-		objectSize := generatePayload()
-
-		// ignore payloads smaller than the min argument
-		if p < payloadsMin {
-			continue
-		}
-
-		fmt.Printf("Uploading \033[1;33m%-s\033[0m objects\n", byteFormat(float64(objectSize)))
-
-		// create a progress bar
-		bar := progressbar.NewOptions(threadsMax-1, progressbar.OptionSetRenderBlankState(true))
-
-		// create an object for every thread, so that different threads don't download the same object
-		for t := 1; t <= threadsMax; t++ {
-			// increment the progress bar for each object
-			_ = bar.Add(1)
-
-			// generate an S3 key from the sha hash of the hostname, thread index, and object size
-			key := generateS3Key(hostname, t, objectSize)
-
-			// do a HeadObject request to avoid uploading the object if it already exists from a previous test run
-			headReq := s3Client.HeadObjectRequest(&s3.HeadObjectInput{
-				Bucket: aws.String(bucketName),
-				Key:    aws.String(key),
-			})
-
-			_, err := headReq.Send()
-
-			// if no error, then the object exists, so skip this one
-			if err == nil {
-				continue
-			}
-
-			// if other error, exit
-			if err != nil && !strings.Contains(err.Error(), "NotFound:") {
-				panic("Failed to head S3 object: " + err.Error())
-			}
-
-			// generate empty payload
-			payload := make([]byte, objectSize)
-
-			// do a PutObject request to create the object
-			putReq := s3Client.PutObjectRequest(&s3.PutObjectInput{
-				Bucket: aws.String(bucketName),
-				Key:    aws.String(key),
-				Body:   bytes.NewReader(payload),
-			})
-
-			_, err = putReq.Send()
-
-			// if the put fails, exit
-			if err != nil {
-				panic("Failed to put S3 object: " + err.Error())
-			}
-		}
-
-		fmt.Print("\n")
-	}
+	fmt.Print("--- Fetching bucket size---\n")
+	fmt.Print("\n")
 }
 
 func runBenchmark() {
@@ -569,40 +491,7 @@ func cleanup() {
 	fmt.Print("\n--- \033[1;32mCLEANUP\033[0m ------------------------------------------------------------------------------------------------------------------\n\n")
 
 	fmt.Printf("Deleting any objects uploaded from %s\n", hostname)
-
-	// create a progress bar
-	bar := progressbar.NewOptions(maxPayload*maxThreads-1, progressbar.OptionSetRenderBlankState(true))
-
-	// an object size iterator that starts from 1 KB and doubles the size on every iteration
-	generatePayload := payloadSizeGenerator()
-
-	// loop over every payload size
-	for p := 1; p <= maxPayload; p++ {
-		// get an object size from the iterator
-		payloadSize := generatePayload()
-
-		// loop over each possible thread to clean up objects from any previous test execution
-		for t := 1; t <= maxThreads; t++ {
-			// increment the progress bar
-			_ = bar.Add(1)
-
-			// generate an S3 key from the sha hash of the hostname, thread index, and object size
-			key := generateS3Key(hostname, t, payloadSize)
-
-			// make a DeleteObject request
-			headReq := s3Client.DeleteObjectRequest(&s3.DeleteObjectInput{
-				Bucket: aws.String(bucketName),
-				Key:    aws.String(key),
-			})
-
-			_, err := headReq.Send()
-
-			// if the object doesn't exist, ignore the error
-			if err != nil && !strings.HasPrefix(err.Error(), "NotFound: Not Found") {
-				panic("Failed to delete object: " + err.Error())
-			}
-		}
-	}
+	fmt.Printf("NO-OP")
 	fmt.Print("\n\n")
 }
 
@@ -682,17 +571,6 @@ func getInstanceId() string {
 	_ = response.Body.Close()
 
 	return string(content)
-}
-
-// returns an object size iterator, starting from 1 KB and double in size by each iteration
-func payloadSizeGenerator() func() uint64 {
-	nextPayloadSize := uint64(1024)
-
-	return func() uint64 {
-		thisPayloadSize := nextPayloadSize
-		nextPayloadSize *= 2
-		return thisPayloadSize
-	}
 }
 
 // adjust the sample count for small instances and for low thread counts (so that the test doesn't take forever)
