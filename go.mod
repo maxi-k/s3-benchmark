@@ -1,9 +1,10 @@
-module github.com/dvassallo/s3-benchmark
+module github.com/maxi-k/s3-benchmark
 
 go 1.13
 
 require (
 	github.com/aws/aws-sdk-go-v2 v0.7.0
+	github.com/c9s/goprocinfo v0.0.0-20200311234719-5750cbd54a3b
 	github.com/golang/protobuf v1.4.2 // indirect
 	github.com/hashicorp/golang-lru v0.5.4 // indirect
 	github.com/neelance/parallel v0.0.0-20160708114440-4de9ce63d14c // indirect

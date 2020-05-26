@@ -95,6 +95,11 @@ var s3Client *s3.S3
 
 // program entry point
 func main() {
+	header := cpuStatCsvHeader()
+	for idx, row := range cpuStatCsv() {
+		fmt.Printf("%s \t-\t %s\n", header[idx], row)
+	}
+	return
 	// parse the program arguments and set the global variables
 	parseFlags()
 
