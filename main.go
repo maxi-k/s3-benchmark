@@ -15,6 +15,10 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
+type usize = uint64
+
+const u1 = uint64(1)
+
 // represents the duration from making an S3 GetObject request to getting the first byte and last byte
 type latency struct {
 	FirstByte time.Duration
@@ -37,19 +41,29 @@ const (
 
 // a benchmark record for one object size and thread count
 type benchmark struct {
-	objectSize uint64
+	objectSize usize
 	threads    int
 	firstByte  map[stat]float64
 	lastByte   map[stat]float64
 	dataPoints []latency
 }
 
+// unit definitions
+const unitKB = 1024
+const unitMB = unitKB * 1024
+const unitGB = unitMB * 1024
+
 // absolute limits
-const maxPayload = 18
 const maxThreads = 64
 
 // default settings
-const defaultRegion = "us-west-2"
+const defaultRegion = "eu-central-1"
+
+// default bucket name
+const defaultBucketName = "masters-thesis-mk"
+
+// default object name
+const defaultObjectName = "benchmark/largefile.bin"
 
 // the hostname or EC2 instance id
 var hostname = getHostname()
@@ -63,29 +77,27 @@ var endpoint string
 // the EC2 instance type if available
 var instanceType = getInstanceType()
 
-// the script will automatically create an S3 bucket to use for the test, and it tries to get a unique bucket name
-// by generating a sha hash of the hostname
-var bucketName = "maxi-s3-benchmark"
+var bucketName string
+var objectName string
+var objectInfo s3.HeadObjectOutput
+var objectSize usize
 
-// We use one very large object for our tests
-var objectName = "largefile.bin"
-
-// the min and max object sizes to test - 1 = 1 KB, and the size doubles with every increment
-var payloadsMin int
-var payloadsMax int
+// the min and max object sizes to test - 1 = 1 MB, and the size doubles with every increment
+var payloadsMin usize
+var payloadsMax usize
 
 // the min and max thread count to use in the test
-var threadsMin int
-var threadsMax int
+var threadsMin usize
+var threadsMax usize
 
 // the number of samples to collect for each benchmark record
-var samples int
+var samples usize
 
 // a test mode to find out when EC2 network throttling kicks in
 var throttlingMode bool
 
-// flag to cleanup the s3 bucket and exit the program
-var cleanupOnly bool
+// flag to only print what would happen, not actually do it
+var dryRun bool
 
 // if not empty, the results of the test get uploaded to S3 using this key prefix
 var csvResults string
@@ -99,18 +111,14 @@ func main() {
 	for idx, row := range cpuStatCsv() {
 		fmt.Printf("%s \t-\t %s\n", header[idx], row)
 	}
-	return
 	// parse the program arguments and set the global variables
 	parseFlags()
 
 	// set up the S3 SDK
 	setupS3Client()
 
-	// if given the flag to cleanup only, then run the cleanup and exit the program
-	if cleanupOnly {
-		cleanup()
-		return
-	}
+	// setup variables, buckets, objects etc.
+	setup()
 
 	// run the test against the uploaded data
 	runBenchmark()
@@ -121,21 +129,21 @@ func main() {
 
 func parseFlags() {
 	hwCores, hwThreads := getHardwareConfig()
-	threadsMinArg := flag.Int("threads-min", minimumOf(hwCores, 8),
+	threadsMinArg := flag.Uint64("threads-min", minimumOf(hwCores, 8),
 		"The minimum number of threads to use when fetching objects from S3.")
-	threadsMaxArg := flag.Int("threads-max", minimumOf(hwThreads, 32),
+	threadsMaxArg := flag.Uint64("threads-max", minimumOf(hwThreads, 32),
 		"The maximum number of threads to use when fetching objects from S3.")
-	payloadsMinArg := flag.Int("payloads-min", 1,
-		"The minimum object size to test, with 1 = 1 KB, and every increment is a double of the previous value.")
-	payloadsMaxArg := flag.Int("payloads-max", 10,
-		"The maximum object size to test, with 1 = 1 KB, and every increment is a double of the previous value.")
-	samplesArg := flag.Int("samples", 1000,
+	payloadsMinArg := flag.Uint64("payloads-min", 10,
+		"The minimum object size to test, with 1 = 1 MB, and every increment is a double of the previous value.")
+	payloadsMaxArg := flag.Uint64("payloads-max", 160,
+		"The maximum object size to test, with 1 = 1 MB, and every increment is a double of the previous value.")
+	samplesArg := flag.Uint64("samples", 1000,
 		"The number of samples to collect for each test of a single object size and thread count.")
-	bucketNameArg := flag.String("bucket-name", "maxi-s3-test",
+	bucketNameArg := flag.String("bucket-name", defaultBucketName,
 		"The name of the bucket where the test object is located")
-	objectNameArg := flag.String("object-name", "",
-		"The name of the large object file")
-	regionArg := flag.String("region", "",
+	objectNameArg := flag.String("object-name", defaultObjectName,
+		"The name of the large object file where data will be fetched from")
+	regionArg := flag.String("region", defaultRegion,
 		"Sets the AWS region to use for the S3 bucket. Only applies if the bucket doesn't already exist.")
 	endpointArg := flag.String("endpoint", "",
 		"Sets the S3 endpoint to use. Only applies to non-AWS, S3-compatible stores.")
@@ -143,8 +151,8 @@ func parseFlags() {
 		"Runs the full exhaustive test, and overrides the threads and payload arguments.")
 	throttlingModeArg := flag.Bool("throttling-mode", false,
 		"Runs a continuous test to find out when EC2 network throttling kicks in.")
-	cleanupArg := flag.Bool("cleanup", false,
-		"Cleans all the objects uploaded to S3 for this test.")
+	dryRunArg := flag.Bool("dry-run", false,
+		"Makes a dry run")
 	csvResultsArg := flag.String("upload-csv", "",
 		"Uploads the test results to S3 as a CSV file.")
 
@@ -172,7 +180,7 @@ func parseFlags() {
 	threadsMin = *threadsMinArg
 	threadsMax = *threadsMaxArg
 	samples = *samplesArg
-	cleanupOnly = *cleanupArg
+	dryRun = *dryRunArg
 	csvResults = *csvResultsArg
 
 	if payloadsMin > payloadsMax {
@@ -187,7 +195,7 @@ func parseFlags() {
 		// if running the full exhaustive test, the threads and payload arguments get overridden with these
 		threadsMin = 1
 		threadsMax = 48
-		payloadsMin = 1  //  1 KB
+		payloadsMin = 1  //  1 MB
 		payloadsMax = 16 // 32 MB
 	}
 
@@ -231,29 +239,38 @@ func setupS3Client() {
 }
 
 func setup() {
-	fmt.Print("\n--- \033[1;32mSETUP\033[0m --------------------------------------------------------------------------------------------------------------------\n\n")
-	fmt.Print("--- Fetching bucket size---\n")
+	fmt.Print("\n---------- \033[1;32mSETUP\033[0m ----------\n\n")
+	fmt.Print("--- Fetching object size ---\n")
+	fmt.Printf("Bucket: %s \n Object: %s \n", bucketName, objectName)
+
+	objReq := s3Client.HeadObjectRequest(&s3.HeadObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    &objectName,
+	})
+	objRes, err := objReq.Send()
+	if err != nil {
+		panic("Failed to get object head" + err.Error())
+	}
+
+	fmt.Printf("Got object: %s", objRes)
+	objectInfo = *objRes
+	objectSize = usize(*objRes.ContentLength)
+
 	fmt.Print("\n")
 }
 
 func runBenchmark() {
-	fmt.Print("\n--- \033[1;32mBENCHMARK\033[0m ----------------------------------------------------------------------------------------------------------------\n\n")
+	fmt.Print("\n---------- \033[1;32mBENCHMARK\033[0m ----------\n\n")
 
 	// array of csv records used to upload the results to S3 when the test is finished
 	var csvRecords [][]string
 
-	// an object size iterator that starts from 1 KB and doubles the size on every iteration
-	generatePayload := payloadSizeGenerator()
+	// an object size iterator that starts from 1 MB and doubles the size on every iteration
+	nextPayload := payloadSizeGenerator()
+	maxSize := payloadsMax * unitMB
 
 	// loop over every payload size
-	for p := 1; p <= payloadsMax; p++ {
-		// get an object size from the iterator
-		payload := generatePayload()
-
-		// ignore payloads smaller than the min argument
-		if p < payloadsMin {
-			continue
-		}
+	for payload := nextPayload(); payload <= maxSize; payload = nextPayload() {
 
 		// print the header for the benchmark of this object size
 		printHeader(payload)
@@ -261,7 +278,7 @@ func runBenchmark() {
 		// run a test per thread count and object size combination
 		for t := threadsMin; t <= threadsMax; t++ {
 			// if throttling mode, loop forever
-			for n := 1; true; n++ {
+			for n := u1; true; n++ {
 				csvRecords = execTest(t, payload, n, csvRecords)
 				if !throttlingMode {
 					break
@@ -272,7 +289,7 @@ func runBenchmark() {
 	}
 
 	// if the csv option is true, upload the csv results to S3
-	if csvResults != "" {
+	if csvResults != "" && !dryRun {
 		b := &bytes.Buffer{}
 		w := csv.NewWriter(b)
 		_ = w.WriteAll(csvRecords)
@@ -298,78 +315,27 @@ func runBenchmark() {
 	}
 }
 
-func execTest(threadCount int, payloadSize uint64, runNumber int, csvRecords [][]string) [][]string {
+func execTest(threadCount usize, payloadSize usize, runNumber usize, csvRecords [][]string) [][]string {
 	// this overrides the sample count on small hosts that can get overwhelmed by a large throughput
 	samples := getTargetSampleCount(threadCount, samples)
 
 	// a channel to submit the test tasks
-	testTasks := make(chan int, threadCount)
+	testTasks := make(chan usize, threadCount)
 
 	// a channel to receive results from the test tasks back on the main thread
 	results := make(chan latency, samples)
 
 	// create the workers for all the threads in this test
-	for w := 1; w <= threadCount; w++ {
-		go func(o int, tasks <-chan int, results chan<- latency) {
-			for range tasks {
-				// generate an S3 key from the sha hash of the hostname, thread index, and object size
-				key := generateS3Key(hostname, o, payloadSize)
-
-				// start the timer to measure the first byte and last byte latencies
-				latencyTimer := time.Now()
-
-				// do the GetObject request
-				req := s3Client.GetObjectRequest(&s3.GetObjectInput{
-					Bucket: aws.String(bucketName),
-					Key:    aws.String(key),
-				})
-
-				resp, err := req.Send()
-
-				// if a request fails, exit
-				if err != nil {
-					panic("Failed to get object: " + err.Error())
-				}
-
-				// measure the first byte latency
-				firstByte := time.Now().Sub(latencyTimer)
-
-				// create a buffer to copy the S3 object body to
-				var buf = make([]byte, payloadSize)
-
-				// read the s3 object body into the buffer
-				size := 0
-				for {
-					n, err := resp.Body.Read(buf)
-
-					size += n
-
-					if err == io.EOF {
-						break
-					}
-
-					// if the streaming fails, exit
-					if err != nil {
-						panic("Error reading object body: " + err.Error())
-					}
-				}
-
-				_ = resp.Body.Close()
-
-				// measure the last byte latency
-				lastByte := time.Now().Sub(latencyTimer)
-
-				// add the latency result to the results channel
-				results <- latency{FirstByte: firstByte, LastByte: lastByte}
-			}
-		}(w, testTasks, results)
+	for w := u1; w <= threadCount; w++ {
+		byteRange := randomByteRange(objectSize, payloadSize)
+		go asyncObjectRequest(w, byteRange, testTasks, results)
 	}
 
 	// start the timer for this benchmark
 	benchmarkTimer := time.Now()
 
 	// submit all the test tasks
-	for j := 1; j <= samples; j++ {
+	for j := u1; j <= samples; j++ {
 		testTasks <- j
 	}
 
@@ -383,10 +349,10 @@ func execTest(threadCount int, payloadSize uint64, runNumber int, csvRecords [][
 	}
 	sumFirstByte := int64(0)
 	sumLastByte := int64(0)
-	benchmarkRecord.threads = threadCount
+	benchmarkRecord.threads = int(threadCount)
 
 	// wait for all the results to come and collect the individual datapoints
-	for s := 1; s <= samples; s++ {
+	for s := u1; s <= samples; s++ {
 		timing := <-results
 		benchmarkRecord.dataPoints = append(benchmarkRecord.dataPoints, timing)
 		sumFirstByte += timing.FirstByte.Nanoseconds()
@@ -420,12 +386,12 @@ func execTest(threadCount int, payloadSize uint64, runNumber int, csvRecords [][
 	benchmarkRecord.lastByte[p99] = float64(benchmarkRecord.dataPoints[int(float64(samples)*float64(0.99))-1].LastByte.Nanoseconds()) / 1000000
 
 	// calculate the throughput rate
-	rate := (float64(benchmarkRecord.objectSize)) / (totalTime.Seconds()) / 1024 / 1024
+	rate := (float64(benchmarkRecord.objectSize)) / (totalTime.Seconds()) / unitMB
 
 	// determine what to put in the first column of the results
 	c := benchmarkRecord.threads
 	if throttlingMode {
-		c = runNumber
+		c = int(runNumber)
 	}
 
 	// print the results to stdout
@@ -462,8 +428,73 @@ func execTest(threadCount int, payloadSize uint64, runNumber int, csvRecords [][
 	return csvRecords
 }
 
+func asyncObjectRequest(o usize, byteRange byteRange, tasks <-chan usize, results chan<- latency) {
+	for range tasks {
+
+		// generate an S3 key from the sha hash of the hostname, thread index, and object size
+		key := objectName // generateS3Key(hostname, o, payloadSize)
+
+		if dryRun {
+			fmt.Println(
+				fmt.Sprintf("Would do a request to bucket %s:%s with threadCount %d, range %d-%d.",
+					bucketName, key, o, byteRange.start, byteRange.end),
+			)
+			results <- latency{0, 0}
+			continue
+		}
+
+		// start the timer to measure the first byte and last byte latencies
+		latencyTimer := time.Now()
+
+		// do the GetObject request
+		req := s3Client.GetObjectRequest(&s3.GetObjectInput{
+			Bucket: aws.String(bucketName),
+			Key:    aws.String(key),
+			Range:  aws.String(byteRange.ToHTTPHeader()),
+		})
+
+		resp, err := req.Send()
+
+		// if a request fails, exit
+		if err != nil {
+			panic("Failed to get object: " + err.Error())
+		}
+
+		// measure the first byte latency
+		firstByte := time.Now().Sub(latencyTimer)
+
+		// create a buffer to copy the S3 object body to
+		var buf = make([]byte, byteRange.Size())
+
+		// read the s3 object body into the buffer
+		size := 0
+		for {
+			n, err := resp.Body.Read(buf)
+
+			size += n
+
+			if err == io.EOF {
+				break
+			}
+
+			// if the streaming fails, exit
+			if err != nil {
+				panic("Error reading object body: " + err.Error())
+			}
+		}
+
+		_ = resp.Body.Close()
+
+		// measure the last byte latency
+		lastByte := time.Now().Sub(latencyTimer)
+
+		// add the latency result to the results channel
+		results <- latency{FirstByte: firstByte, LastByte: lastByte}
+	}
+}
+
 // prints the table header for the test results
-func printHeader(objectSize uint64) {
+func printHeader(objectSize usize) {
 	// instance type string used to render results to stdout
 	instanceTypeString := ""
 
@@ -486,7 +517,7 @@ func printHeader(objectSize uint64) {
 
 // cleans up the objects uploaded to S3 for this test (but doesn't remove the bucket)
 func cleanup() {
-	fmt.Print("\n--- \033[1;32mCLEANUP\033[0m ------------------------------------------------------------------------------------------------------------------\n\n")
+	fmt.Print("\n---------- \033[1;32mCLEANUP\033[0m ----------\n\n")
 
 	fmt.Printf("Deleting any objects uploaded from %s\n", hostname)
 	fmt.Printf("NO-OP")

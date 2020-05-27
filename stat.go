@@ -22,6 +22,10 @@ func cpuStatCsvHeader() [10]string {
 	}
 }
 
+func cpuStatToStr(stat uint64) string {
+	return strconv.FormatUint(stat, 10)
+}
+
 func cpuStatCsv() [10]string {
 	stat, err := linuxproc.ReadStat("/proc/stat")
 	if err != nil {
@@ -30,14 +34,14 @@ func cpuStatCsv() [10]string {
 	a := stat.CPUStatAll
 	return [10]string{
 		a.Id,
-		strconv.FormatUint(a.System, 10),
-		strconv.FormatUint(a.User, 10),
-		strconv.FormatUint(a.Idle, 10),
-		strconv.FormatUint(a.Nice, 10),
-		strconv.FormatUint(a.IOWait, 10),
-		strconv.FormatUint(a.IRQ, 10),
-		strconv.FormatUint(a.SoftIRQ, 10),
-		strconv.FormatUint(a.Steal, 10),
-		strconv.FormatUint(a.Guest, 10),
+		cpuStatToStr(a.System),
+		cpuStatToStr(a.User),
+		cpuStatToStr(a.Idle),
+		cpuStatToStr(a.Nice),
+		cpuStatToStr(a.IOWait),
+		cpuStatToStr(a.IRQ),
+		cpuStatToStr(a.SoftIRQ),
+		cpuStatToStr(a.Steal),
+		cpuStatToStr(a.Guest),
 	}
 }

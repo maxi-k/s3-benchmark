@@ -2,15 +2,16 @@ package main
 
 import (
 	"fmt"
+	"math/rand"
 	"runtime"
 	"strings"
 )
 
-// returns an object size iterator, starting from 1 KB and double in size by each iteration
-func payloadSizeGenerator() func() uint64 {
-	nextPayloadSize := uint64(payloadsMin)
+// returns an object size iterator, starting from 1 MB and double in size by each iteration
+func payloadSizeGenerator() func() usize {
+	nextPayloadSize := usize(payloadsMin * unitMB)
 
-	return func() uint64 {
+	return func() usize {
 		thisPayloadSize := nextPayloadSize
 		nextPayloadSize *= 2
 		return thisPayloadSize
@@ -18,7 +19,7 @@ func payloadSizeGenerator() func() uint64 {
 }
 
 // adjust the sample count for small instances and for low thread counts (so that the test doesn't take forever)
-func getTargetSampleCount(threads, tasks int) int {
+func getTargetSampleCount(threads, tasks usize) usize {
 	if instanceType == "" {
 		return minimumOf(50, tasks)
 	}
@@ -37,26 +38,54 @@ func getTargetSampleCount(threads, tasks int) int {
 	return tasks
 }
 
-func getHardwareConfig() (int, int) {
-	hwThreads := runtime.NumCPU()
+func getHardwareConfig() (usize, usize) {
+	hwThreads := usize(runtime.NumCPU())
 	hwCores := minimumOf(hwThreads/2, 1) // assume hyperthreading
 	return hwCores, hwThreads
 }
 
 // go doesn't seem to have a min function in the std lib!
-func minimumOf(x, y int) int {
+func minimumOf(x, y usize) usize {
 	if x < y {
 		return x
 	}
 	return y
 }
 
-// formats bytes to KB or MB
+// formats bytes to KB, MB or GB
 func byteFormat(bytes float64) string {
-	if bytes >= 1024*1024 {
-		return fmt.Sprintf("%.f MB", bytes/1024/1024)
+	if bytes >= unitGB {
+		return fmt.Sprintf("%.f GB", bytes/unitGB)
 	}
-	return fmt.Sprintf("%.f KB", bytes/1024)
+	if bytes >= unitMB {
+		return fmt.Sprintf("%.f MB", bytes/unitMB)
+	}
+	return fmt.Sprintf("%.f KB", bytes/unitKB)
+}
+
+// represents a byte range to fetch from an s3 object
+type byteRange struct {
+	start usize
+	end   usize
+}
+
+// returns a random byte range with `chunkSize` inside `[0, size]`
+func randomByteRange(size usize, chunkSize usize) byteRange {
+	if size < chunkSize {
+		fmt.Printf("Error: %d < %d\n", size, chunkSize)
+		panic("ChunkSize was larger than overall Size!")
+	}
+	offset := usize(rand.Intn(int(size - chunkSize + 1)))
+	return byteRange{offset, offset + chunkSize}
+}
+
+// returns a http range header from the given byte range
+func (r *byteRange) ToHTTPHeader() string {
+	return fmt.Sprintf("bytes=%d-%d", r.start, r.end)
+}
+
+func (r *byteRange) Size() usize {
+	return r.end - r.start
 }
 
 // comparator to sort by first byte latency
