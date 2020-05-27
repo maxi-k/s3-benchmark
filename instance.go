@@ -1,12 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
+	"encoding/csv"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"time"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
 const instanceDataUrlPrefix = "http://169.254.169.254/latest/meta-data"
@@ -90,4 +95,28 @@ func generateS3Key(host string, threadIndex int, payloadSize usize) string {
 	keyHash := sha1.Sum([]byte(fmt.Sprintf("%s-%03d-%012d", host, threadIndex, payloadSize)))
 	key := fmt.Sprintf("%x", keyHash)
 	return key
+}
+
+func uploadCsv(prefix string, data [][]string) {
+	b := &bytes.Buffer{}
+	w := csv.NewWriter(b)
+	_ = w.WriteAll(data)
+
+	key := prefix + ".csv"
+
+	// do the PutObject request
+	putReq := s3Client.PutObjectRequest(&s3.PutObjectInput{
+		Bucket: aws.String(bucketName),
+		Key:    &key,
+		Body:   bytes.NewReader(b.Bytes()),
+	})
+
+	_, err := putReq.Send()
+
+	// if the request fails, exit
+	if err != nil {
+		panic("Failed to put object: " + err.Error())
+	}
+
+	fmt.Printf("CSV data uploaded to \033[1;33ms3://%s/%s\033[0m\n", bucketName, key)
 }

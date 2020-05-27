@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bytes"
-	"encoding/csv"
 	"flag"
 	"fmt"
 	"io"
@@ -99,6 +97,9 @@ var throttlingMode bool
 // if not empty, the results of the test get uploaded to S3 using this key prefix
 var csvResults string
 
+// if not empty, cpu usage statistics get uploaded to S3 using this key prefix
+var statResults string
+
 // the S3 SDK client
 var s3Client *s3.S3
 
@@ -110,6 +111,11 @@ var onlyPrintConfig bool
 
 // program entry point
 func main() {
+	// header := cpuStatCsvHeader()
+	// for idx, row := range cpuStatCsv() {
+	// 	fmt.Printf("%s \t : \t %s\n", header[idx], row)
+	// }
+	// return
 	// parse the program arguments and set the global variables
 	parseFlags()
 	if onlyPrintConfig {
@@ -151,6 +157,8 @@ func parseFlags() {
 		"Runs a continuous test to find out when EC2 network throttling kicks in.")
 	csvResultsArg := flag.String("upload-csv", "",
 		"Uploads the test results to S3 as a CSV file.")
+	statResultsArg := flag.String("upload-stats", "",
+		"Upload CPU stats from during the benchmark to S3 as a CSV file.")
 
 	dryRunArg := flag.Bool("dry-run", false, "Makes a dry run")
 	printConfigArg := flag.Bool("print", false, "Prints the parsed configuration and exits")
@@ -180,6 +188,7 @@ func parseFlags() {
 	threadsMax = *threadsMaxArg
 	samples = *samplesArg
 	csvResults = *csvResultsArg
+	statResults = *statResultsArg
 	dryRun = *dryRunArg
 	onlyPrintConfig = *printConfigArg
 
@@ -265,6 +274,8 @@ func runBenchmark() {
 
 	// array of csv records used to upload the results to S3 when the test is finished
 	var csvRecords [][]string
+	// array of cpu stat measurements to upload to s3 when the test is finished
+	var csvStats [][]string
 
 	// an object size iterator that starts from 1 MB and doubles the size on every iteration
 	nextPayload := payloadSizeGenerator()
@@ -283,7 +294,9 @@ func runBenchmark() {
 			// if throttling mode, loop forever
 			for n := u1; true; n++ {
 				if !dryRun {
-					csvRecords = execTest(t, payload, n, csvRecords)
+					recordLines, statLines := execTest(t, payload, n)
+					csvRecords = append(csvRecords, recordLines)
+					csvStats = append(csvStats, statLines)
 				} else {
 					printDryRun(t, payload)
 				}
@@ -299,32 +312,15 @@ func runBenchmark() {
 
 	// if the csv option is true, upload the csv results to S3
 	if csvResults != "" && !dryRun {
-		b := &bytes.Buffer{}
-		w := csv.NewWriter(b)
-		_ = w.WriteAll(csvRecords)
+		uploadCsv("results/"+csvResults+"-"+instanceType, csvRecords)
+	}
 
-		// create the s3 key based on the prefix argument and instance type
-		key := "results/" + csvResults + "-" + instanceType
-
-		// do the PutObject request
-		putReq := s3Client.PutObjectRequest(&s3.PutObjectInput{
-			Bucket: aws.String(bucketName),
-			Key:    &key,
-			Body:   bytes.NewReader(b.Bytes()),
-		})
-
-		_, err := putReq.Send()
-
-		// if the request fails, exit
-		if err != nil {
-			panic("Failed to put object: " + err.Error())
-		}
-
-		fmt.Printf("CSV results uploaded to \033[1;33ms3://%s/%s\033[0m\n", bucketName, key)
+	if statResults != "" && !dryRun {
+		uploadCsv("stats/"+statResults+"-"+instanceType, csvStats)
 	}
 }
 
-func execTest(threadCount usize, payloadSize usize, runNumber usize, csvRecords [][]string) [][]string {
+func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, []string) {
 	// this overrides the sample count on small hosts that can get overwhelmed by a large throughput
 	samples := getTargetSampleCount(threadCount, samples)
 
@@ -409,7 +405,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize, csvRecords 
 		benchmarkRecord.lastByte[avg], benchmarkRecord.lastByte[min], benchmarkRecord.lastByte[p25], benchmarkRecord.lastByte[p50], benchmarkRecord.lastByte[p75], benchmarkRecord.lastByte[p90], benchmarkRecord.lastByte[p99], benchmarkRecord.lastByte[max])
 
 	// add the results to the csv array
-	csvRecords = append(csvRecords, []string{
+	benchLine := []string{
 		fmt.Sprintf("%s", hostname),
 		fmt.Sprintf("%s", instanceType),
 		fmt.Sprintf("%d", payloadSize),
@@ -431,9 +427,11 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize, csvRecords 
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[p90]),
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[p99]),
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[max]),
-	})
+	}
 
-	return csvRecords
+	// TODO: More measurements
+	statLine := cpuStatCsv()
+	return benchLine, statLine
 }
 
 func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results chan<- latency) {

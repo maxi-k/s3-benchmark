@@ -4,44 +4,50 @@ import (
 	"log"
 	"strconv"
 
-	linuxproc "github.com/c9s/goprocinfo/linux"
+	procstat "github.com/shirou/gopsutil/cpu"
 )
 
-func cpuStatCsvHeader() [10]string {
-	return [10]string{
-		"id",
-		"system",
-		"user",
-		"idle",
-		"nice",
-		"ioWait",
-		"irq",
-		"softIrq",
-		"steal",
-		"guest",
+func cpuStatCsvHeader() []string {
+	return []string{
+		"time.total",
+		"time.system",
+		"time.user",
+		"time.idle",
+		"time.nice",
+		"time.ioWait",
+		"time.irq",
+		"time.softIrq",
+		"time.steal",
+		"time.guest",
+		"perc.total",
 	}
 }
 
-func cpuStatToStr(stat uint64) string {
-	return strconv.FormatUint(stat, 10)
+func cpuStatToStr(stat float64) string {
+	return strconv.FormatFloat(stat, 'f', 10, 64)
 }
 
-func cpuStatCsv() [10]string {
-	stat, err := linuxproc.ReadStat("/proc/stat")
+func cpuStatCsv() []string {
+	tstat, err := procstat.Times(false)
 	if err != nil {
 		log.Fatal("could not read /proc/stat")
 	}
-	a := stat.CPUStatAll
-	return [10]string{
-		a.Id,
-		cpuStatToStr(a.System),
-		cpuStatToStr(a.User),
-		cpuStatToStr(a.Idle),
-		cpuStatToStr(a.Nice),
-		cpuStatToStr(a.IOWait),
-		cpuStatToStr(a.IRQ),
-		cpuStatToStr(a.SoftIRQ),
-		cpuStatToStr(a.Steal),
-		cpuStatToStr(a.Guest),
+	pstat, err := procstat.Percent(0, false)
+	if err != nil {
+		log.Fatal("could not get cpu percentages")
+	}
+	t := tstat[0]
+	return []string{
+		cpuStatToStr(t.Total()),
+		cpuStatToStr(t.System),
+		cpuStatToStr(t.User),
+		cpuStatToStr(t.Idle),
+		cpuStatToStr(t.Nice),
+		cpuStatToStr(t.Iowait),
+		cpuStatToStr(t.Irq),
+		cpuStatToStr(t.Softirq),
+		cpuStatToStr(t.Steal),
+		cpuStatToStr(t.Guest),
+		cpuStatToStr(pstat[0]),
 	}
 }
