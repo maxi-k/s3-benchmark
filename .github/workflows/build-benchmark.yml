@@ -19,3 +19,9 @@ jobs:
         working-directory: ./
         run: |
           ./go-build-all
+
+      - name: Publish the linux-amd64 benchmark as a build artifact
+        uses: actions/upload-artifact@v1
+        with:
+          name: s3-benchmark-linux-amd64
+          path: build/linux-amd64/s3-benchmark
