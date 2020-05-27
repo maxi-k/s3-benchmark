@@ -254,7 +254,6 @@ func setup() {
 		panic("Failed to get object head" + err.Error())
 	}
 
-	fmt.Printf("Got object: %s", objRes)
 	objectInfo = *objRes
 	objectSize = usize(*objRes.ContentLength)
 
