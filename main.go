@@ -96,33 +96,31 @@ var samples usize
 // a test mode to find out when EC2 network throttling kicks in
 var throttlingMode bool
 
-// flag to only print what would happen, not actually do it
-var dryRun bool
-
 // if not empty, the results of the test get uploaded to S3 using this key prefix
 var csvResults string
 
 // the S3 SDK client
 var s3Client *s3.S3
 
+// flag to only print what would happen, not actually do it
+var dryRun bool
+
+// flag to only print the parsed configuration
+var onlyPrintConfig bool
+
 // program entry point
 func main() {
-	header := cpuStatCsvHeader()
-	for idx, row := range cpuStatCsv() {
-		fmt.Printf("%s \t-\t %s\n", header[idx], row)
-	}
 	// parse the program arguments and set the global variables
 	parseFlags()
-
+	if onlyPrintConfig {
+		return
+	}
 	// set up the S3 SDK
 	setupS3Client()
-
 	// setup variables, buckets, objects etc.
 	setup()
-
 	// run the test against the uploaded data
 	runBenchmark()
-
 	// remove the objects uploaded to S3 for this test (but doesn't remove the bucket)
 	cleanup()
 }
@@ -137,7 +135,7 @@ func parseFlags() {
 		"The minimum object size to test, with 1 = 1 MB, and every increment is a double of the previous value.")
 	payloadsMaxArg := flag.Uint64("payloads-max", 160,
 		"The maximum object size to test, with 1 = 1 MB, and every increment is a double of the previous value.")
-	samplesArg := flag.Uint64("samples", 1000,
+	samplesArg := flag.Uint64("samples", 100,
 		"The number of samples to collect for each test of a single object size and thread count.")
 	bucketNameArg := flag.String("bucket-name", defaultBucketName,
 		"The name of the bucket where the test object is located")
@@ -151,10 +149,11 @@ func parseFlags() {
 		"Runs the full exhaustive test, and overrides the threads and payload arguments.")
 	throttlingModeArg := flag.Bool("throttling-mode", false,
 		"Runs a continuous test to find out when EC2 network throttling kicks in.")
-	dryRunArg := flag.Bool("dry-run", false,
-		"Makes a dry run")
 	csvResultsArg := flag.String("upload-csv", "",
 		"Uploads the test results to S3 as a CSV file.")
+
+	dryRunArg := flag.Bool("dry-run", false, "Makes a dry run")
+	printConfigArg := flag.Bool("print", false, "Prints the parsed configuration and exits")
 
 	// parse the arguments and set all the global variables accordingly
 	flag.Parse()
@@ -180,8 +179,9 @@ func parseFlags() {
 	threadsMin = *threadsMinArg
 	threadsMax = *threadsMaxArg
 	samples = *samplesArg
-	dryRun = *dryRunArg
 	csvResults = *csvResultsArg
+	dryRun = *dryRunArg
+	onlyPrintConfig = *printConfigArg
 
 	if payloadsMin > payloadsMax {
 		payloadsMin = payloadsMax
@@ -207,6 +207,8 @@ func parseFlags() {
 		payloadsMax = 15 // 16 MB
 		throttlingMode = *throttlingModeArg
 	}
+
+	printConfiguration()
 }
 
 func setupS3Client() {
@@ -327,8 +329,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize, csvRecords 
 
 	// create the workers for all the threads in this test
 	for w := u1; w <= threadCount; w++ {
-		byteRange := randomByteRange(objectSize, payloadSize)
-		go asyncObjectRequest(w, byteRange, testTasks, results)
+		go asyncObjectRequest(w, payloadSize, testTasks, results)
 	}
 
 	// start the timer for this benchmark
@@ -428,11 +429,11 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize, csvRecords 
 	return csvRecords
 }
 
-func asyncObjectRequest(o usize, byteRange byteRange, tasks <-chan usize, results chan<- latency) {
+func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results chan<- latency) {
 	for range tasks {
 
-		// generate an S3 key from the sha hash of the hostname, thread index, and object size
 		key := objectName // generateS3Key(hostname, o, payloadSize)
+		byteRange := randomByteRange(objectSize, payloadSize)
 
 		if dryRun {
 			fmt.Println(

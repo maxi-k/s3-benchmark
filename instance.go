@@ -58,7 +58,7 @@ func getInstanceType() string {
 	link := instanceDataUrl("instance-type")
 	response, err := httpClient.Get(link)
 	if err != nil {
-		return ""
+		return "unknown-instance"
 	}
 
 	content, _ := ioutil.ReadAll(response.Body)

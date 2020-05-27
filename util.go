@@ -7,6 +7,10 @@ import (
 	"strings"
 )
 
+/*****
+ *  INSTANCE AND PAYLOAD UTILITIES
+ *****/
+
 // returns an object size iterator, starting from 1 MB and double in size by each iteration
 func payloadSizeGenerator() func() usize {
 	nextPayloadSize := usize(payloadsMin * unitMB)
@@ -26,23 +30,18 @@ func getTargetSampleCount(threads, tasks usize) usize {
 	if !strings.Contains(instanceType, "xlarge") && !strings.Contains(instanceType, "metal") {
 		return minimumOf(50, tasks)
 	}
-	if threads <= 4 {
-		return minimumOf(100, tasks)
-	}
-	if threads <= 8 {
-		return minimumOf(250, tasks)
-	}
-	if threads <= 16 {
-		return minimumOf(500, tasks)
-	}
-	return tasks
+	return minimumOf(threads*10, tasks)
 }
 
 func getHardwareConfig() (usize, usize) {
 	hwThreads := usize(runtime.NumCPU())
-	hwCores := minimumOf(hwThreads/2, 1) // assume hyperthreading
+	hwCores := maximumOf(hwThreads/2, 1) // assume hyperthreading
 	return hwCores, hwThreads
 }
+
+/*****
+ *  MATH UTILITIES
+ *****/
 
 // go doesn't seem to have a min function in the std lib!
 func minimumOf(x, y usize) usize {
@@ -52,16 +51,17 @@ func minimumOf(x, y usize) usize {
 	return y
 }
 
-// formats bytes to KB, MB or GB
-func byteFormat(bytes float64) string {
-	if bytes >= unitGB {
-		return fmt.Sprintf("%.f GB", bytes/unitGB)
+// go doesn't seem to have a min function in the std lib!
+func maximumOf(x, y usize) usize {
+	if x > y {
+		return x
 	}
-	if bytes >= unitMB {
-		return fmt.Sprintf("%.f MB", bytes/unitMB)
-	}
-	return fmt.Sprintf("%.f KB", bytes/unitKB)
+	return y
 }
+
+/*****
+ *  BYTE UTILITIES
+ *****/
 
 // represents a byte range to fetch from an s3 object
 type byteRange struct {
@@ -88,6 +88,17 @@ func (r *byteRange) Size() usize {
 	return r.end - r.start
 }
 
+// formats bytes to KB, MB or GB
+func byteFormat(bytes float64) string {
+	if bytes >= unitGB {
+		return fmt.Sprintf("%.f GB", bytes/unitGB)
+	}
+	if bytes >= unitMB {
+		return fmt.Sprintf("%.f MB", bytes/unitMB)
+	}
+	return fmt.Sprintf("%.f KB", bytes/unitKB)
+}
+
 // comparator to sort by first byte latency
 type ByFirstByte []latency
 
@@ -101,3 +112,47 @@ type ByLastByte []latency
 func (a ByLastByte) Len() int           { return len(a) }
 func (a ByLastByte) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 func (a ByLastByte) Less(i, j int) bool { return a[i].LastByte < a[j].LastByte }
+
+/*****
+ *  PRINT UTILITIES
+ *****/
+
+const printEOL = "\033[59G|"
+
+func printIntVar(name string, value usize) {
+	fmt.Printf("| \033[1m%s\033[0m\t:\t%d%s\n", name, value, printEOL)
+}
+
+func printBoolVar(name string, value bool) {
+	s := "FALSE"
+	if value {
+		s = "TRUE"
+	}
+	fmt.Printf("| \033[1m%s\033[0m\t:\t%s%s\n", name, s, printEOL)
+}
+
+func printStrVar(name string, value string) {
+	fmt.Printf("| \033[1m%s\033[0m\t:\t%s%s\n", name, value, printEOL)
+}
+
+func printConfiguration() {
+	fmt.Printf("\n+------------------- \033[1;32mRUN CONFIGURATION\033[0m -------------------+\n")
+
+	printBoolVar("Dry Run?", dryRun)
+	printStrVar("EC2 Region", region)
+	printStrVar("Instance Type", instanceType)
+	printStrVar("Bucket Name", bucketName)
+	printStrVar("Object Name", objectName)
+	printIntVar("Payloads Min", payloadsMin)
+	printIntVar("Payloads Max", payloadsMax)
+	printIntVar("Threads Min", threadsMin)
+	printIntVar("Threads Max", threadsMax)
+	endStr := "+---------------------------------------------------------+\n"
+	fmt.Print(endStr)
+
+	fmt.Printf("\n+------------------- \033[1;32mDETECTED HARDWARE\033[0m -------------------+\n")
+	hwCores, hwThreads := getHardwareConfig()
+	printIntVar("Detected Cores", hwCores)
+	printIntVar("Detected HW Threads", hwThreads)
+	fmt.Print(endStr)
+}
