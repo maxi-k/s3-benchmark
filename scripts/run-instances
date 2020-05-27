@@ -1,50 +1,79 @@
 #!/bin/bash
 
+print_missing_parameters() {
+    echo "Need to provide \"aws-settings\" bash file which sets at least required parameters!"
+    echo "Required Parameters: AMI, IAM_PROFILE, AVAILABILITY_ZONE"
+    echo "Optional Parameters: AVAILABILITY_ZONE, MARKET_TYPE, KEY_NAME"
+    exit 1
+}
+
+print_configuration() {
+    echo -e "+--------------- \033[1;32mRunning with Configuration:\033[0m--------------+"
+    echo -e "| REGION:\t $REGION \033[59G|"
+    echo -e "| AVAIL.ZONE:\t ${AVAILABILITY_ZONE:-unset} \033[59G|"
+    echo -e "| MARKET_TYPE:\t ${MARKET_TYPE:-unset} \033[59G|"
+    echo -e "| AMI:\t\t $AMI\033[59G|"
+    echo -e "| IAM_PROFILE:\t $IAM_PROFILE\033[59G|"
+    echo -e "| KEY_NAME:\t ${KEY_NAME:-unset} \033[59G|"
+    # echo -e "| SUBNET:\t $SUBNET\t\033[59G|"
+    echo -e "+---------------------------------------------------------+\n\n"
+}
+
 # Check that the aws settings file exists
-[ -f aws-settings ] && source ./aws-settings \
-  || (echo "Need to provide AWS Settings bash file which sets AMI, IAM_PROFILE, AVAILABILITY_ZONE!"; exit)
+[ -f aws-settings ] && source ./aws-settings || print_missing_parameters
 
 REGION=${REGION:-"eu-central-1"}
 
-echo -e "\n+--------------- \033[1;32mRunning with Configuration:\033[0m--------------+"
-echo -e "| REGION:\t $REGION \033[59G|"
-echo -e "| AVAIL.ZONE:\t ${AVAILABILITY_ZONE:-unset} \033[59G|"
-echo -e "| AMI:\t\t $AMI\033[59G|"
-echo -e "| IAM_PROFILE:\t $IAM_PROFILE\033[59G|"
-# echo -e "| SUBNET:\t $SUBNET\t\033[59G|"
-echo -e "+---------------------------------------------------------+\n\n"
+print_configuration
 
 if [ -z $AVAILABILITY_ZONE ]; then
     PLACEMENT_OPTION=""
 else
-    PLACEMENT_OPTION=" --placement \"AvailabilityZone=$AVAILABILITY_ZONE\""
+    PLACEMENT_OPTION=" --placement AvailabilityZone=$AVAILABILITY_ZONE"
 fi
+echo -e "Calculated PLACEMENT_OPTION: \t $PLACEMENT_OPTION"
+
+if [ -z $MARKET_TYPE ]; then
+    MARKET_TYPE_OPTION=""
+else
+    MARKET_TYPE_OPTION=" --instance-market-options MarketType=$MARKET_TYPE"
+fi
+echo -e "Calculated MARKET_TYPE_OPTION: \t $MARKET_TYPE_OPTION"
+
+if [ -z $KEY_NAME ]; then
+    KEY_NAME_OPTION=""
+else
+    MARKET_TYPE_OPTION=" --key-name $KEY_NAME"
+fi
+echo -e "Calculated KEY_NAME_OPTION: \t $KEY_NAME_OPTION"
 
 i=0
 # read the list of instance types from stdin
 while read instance_type
 do
-     # print the instance type
-     echo "Running benchmark on $instance_type"
+    # print the instance type
+    echo "Running benchmark on $instance_type"
 
-     # start the instance
-     aws ec2 run-instances \
-         --instance-type $instance_type \
-         --image-id $AMI \
-         --count 1 \
-         --iam-instance-profile Name=$IAM_PROFILE \
-         --instance-initiated-shutdown-behavior terminate \
-         --user-data file://userdata \
-         $PLACEMENT_OPTION \
-         --region $REGION \
-         # --subnet-id $SUBNET
-     i=$[$i +1]
+    # start the instance
+    aws ec2 run-instances \
+        --instance-type $instance_type \
+        --image-id $AMI \
+        --count 1 \
+        --iam-instance-profile Name=$IAM_PROFILE \
+        --instance-initiated-shutdown-behavior terminate \
+        $PLACEMENT_OPTION \
+        $MARKET_TYPE_OPTION \
+        $KEY_NAME_OPTION \
+        --region $REGION \
+        --user-data file://userdata
+        # --subnet-id $SUBNET
+        i=$[$i +1]
 
-     # sleep for 30 minutes after 5 instances
-     n=$(($i%5))
-     if [ $n -eq 0 ]
-     then
-         echo "Sleeping for 30 minutes"
-         sleep 1800
-      fi
+    # sleep for 30 minutes after 5 instances
+    n=$(($i%5))
+    if [ $n -eq 0 ]
+    then
+        echo "Sleeping for 30 minutes"
+        sleep 1800
+    fi
 done
