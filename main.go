@@ -195,16 +195,16 @@ func parseFlags() {
 		// if running the full exhaustive test, the threads and payload arguments get overridden with these
 		threadsMin = 1
 		threadsMax = 48
-		payloadsMin = 1  //  1 MB
-		payloadsMax = 16 // 32 MB
+		payloadsMin = 1   //  1 MB
+		payloadsMax = 256 // 160 MB
 	}
 
 	if *throttlingModeArg {
 		// if running the network throttling test, the threads and payload arguments get overridden with these
 		threadsMin = 36
 		threadsMax = 36
-		payloadsMin = 15 // 16 MB
-		payloadsMax = 15 // 16 MB
+		payloadsMin = 100 // 100 MB
+		payloadsMax = 100 // 100 MB
 		throttlingMode = *throttlingModeArg
 	}
 
@@ -275,19 +275,27 @@ func runBenchmark() {
 	for payload := nextPayload(); payload <= maxSize; payload = nextPayload() {
 
 		// print the header for the benchmark of this object size
-		printHeader(payload)
+		if !dryRun {
+			printHeader(payload)
+		}
 
 		// run a test per thread count and object size combination
 		for t := threadsMin; t <= threadsMax; t++ {
 			// if throttling mode, loop forever
 			for n := u1; true; n++ {
-				csvRecords = execTest(t, payload, n, csvRecords)
+				if !dryRun {
+					csvRecords = execTest(t, payload, n, csvRecords)
+				} else {
+					printDryRun(t, payload)
+				}
 				if !throttlingMode {
 					break
 				}
 			}
 		}
-		fmt.Print("+---------+----------------+------------------------------------------------+------------------------------------------------+\n\n")
+		if !dryRun {
+			fmt.Print("+---------+----------------+------------------------------------------------+------------------------------------------------+\n\n")
+		}
 	}
 
 	// if the csv option is true, upload the csv results to S3
@@ -435,15 +443,6 @@ func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results 
 		key := objectName // generateS3Key(hostname, o, payloadSize)
 		byteRange := randomByteRange(objectSize, payloadSize)
 
-		if dryRun {
-			fmt.Println(
-				fmt.Sprintf("Would do a request to bucket %s:%s with threadCount %d, range %d-%d.",
-					bucketName, key, o, byteRange.start, byteRange.end),
-			)
-			results <- latency{0, 0}
-			continue
-		}
-
 		// start the timer to measure the first byte and last byte latencies
 		latencyTimer := time.Now()
 
@@ -520,7 +519,7 @@ func printHeader(objectSize usize) {
 func cleanup() {
 	fmt.Print("\n---------- \033[1;32mCLEANUP\033[0m ----------\n\n")
 
-	fmt.Printf("Deleting any objects uploaded from %s\n", hostname)
+	// fmt.Printf("Deleting any objects uploaded from %s\n", hostname)
 	fmt.Printf("NO-OP")
 	fmt.Print("\n\n")
 }

@@ -156,3 +156,7 @@ func printConfiguration() {
 	printIntVar("Detected HW Threads", hwThreads)
 	fmt.Print(endStr)
 }
+
+func printDryRun(threadCount usize, payload usize) {
+	fmt.Printf("⟶ Dry Run Request: \t \033[1m%d\033[0m \t Threads and Payload Size \t \033[1m%d\033[0m \n", threadCount, payload)
+}
