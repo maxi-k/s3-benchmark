@@ -1,0 +1,2 @@
+#!/bin/sh
+grep -v -f data/dvassallo-tested-instances data/all-instances
