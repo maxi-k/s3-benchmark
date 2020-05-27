@@ -30,14 +30,14 @@ func cpuStatCsv() [10]string {
 	a := stat.CPUStatAll
 	return [10]string{
 		a.Id,
-		strconv.FormatInt(a.System),
-		string(a.User),
-		string(a.Idle),
-		string(a.Nice),
-		string(a.IOWait),
-		string(a.IRQ),
-		string(a.SoftIRQ),
-		string(a.Steal),
-		string(a.Guest),
+		strconv.FormatUint(a.System, 10),
+		strconv.FormatUint(a.User, 10),
+		strconv.FormatUint(a.Idle, 10),
+		strconv.FormatUint(a.Nice, 10),
+		strconv.FormatUint(a.IOWait, 10),
+		strconv.FormatUint(a.IRQ, 10),
+		strconv.FormatUint(a.SoftIRQ, 10),
+		strconv.FormatUint(a.Steal, 10),
+		strconv.FormatUint(a.Guest, 10),
 	}
 }
