@@ -8,22 +8,22 @@ print_configuration
 if [ -z $AVAILABILITY_ZONE ]; then
     PLACEMENT_OPTION=""
 else
-    PLACEMENT_OPTION=<<EOF
+    read -r -d '' PLACEMENT_OPTION <<EOF
     "Placement": {
       "AvailabilityZone": "$AVAILABILITY_ZONE"
     },
 EOF
 fi
-echo -e "Calculated PLACEMENT_OPTION: \t $PLACEMENT_OPTION"
+echo -e "Calculated PLACEMENT_OPTION: \n $PLACEMENT_OPTION\n\n"
 
 if [ -z $KEY_NAME ]; then
     KEY_NAME_OPTION=""
 else
-    KEY_NAME_OPTION=<<EOF
+    read -r -d '' KEY_NAME_OPTION <<EOF
     "KeyName": "$KEY_NAME",
 EOF
 fi
-echo -e "Calculated KEY_NAME_OPTION: \t $KEY_NAME_OPTION"
+echo -e "Calculated KEY_NAME_OPTION: \n $KEY_NAME_OPTION\n\n"
 
 # Base64-Encode the userdata start file for the json
 USERDATA_STR=$(base64 -w0 userdata)
@@ -32,7 +32,6 @@ echo "Re-creating temporary configuration directory"
 confdir=./inst-tmp
 [ -e $confdir ] && rm -r $confdir
 mkdir $confdir
-
 
 i=0
 # read the list of instance types from stdin
@@ -59,6 +58,13 @@ do
 }
 EOF
 
+    if [ ! -z $1 ]; then
+        echo -e "\nArgument given, doing dry run (not executing spot request)"
+        echo -e "Configuration file contents: \n------------------"
+        cat $conffile
+        echo "---------------------"
+        break;
+    fi
     # request the spot instance
     echo "Requesting spot instance for $instance_type"
     aws ec2 request-spot-instances \
