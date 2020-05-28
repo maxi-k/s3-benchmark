@@ -83,10 +83,12 @@ var objectSize usize
 // the min and max object sizes to test - 1 = 1 MB, and the size doubles with every increment
 var payloadsMin usize
 var payloadsMax usize
+var payloadsStep usize
 
 // the min and max thread count to use in the test
 var threadsMin usize
 var threadsMax usize
+var threadsStep float64
 
 // the number of samples to collect for each benchmark record
 var samples usize
@@ -133,12 +135,16 @@ func parseFlags() {
 	hwCores, hwThreads := getHardwareConfig()
 	threadsMinArg := flag.Uint64("threads-min", minimumOf(hwCores, 8),
 		"The minimum number of threads to use when fetching objects from S3.")
-	threadsMaxArg := flag.Uint64("threads-max", minimumOf(hwThreads, 32),
+	threadsMaxArg := flag.Uint64("threads-max", hwThreads*2,
 		"The maximum number of threads to use when fetching objects from S3.")
+	threadsStepArg := flag.Float64("threads-step", 2,
+		"What increase in thread count per benchmark run is. Positive means multiplicative, negative means additive.")
 	payloadsMinArg := flag.Uint64("payloads-min", 10,
 		"The minimum object size to test, with 1 = 1 MB, and every increment is a double of the previous value.")
 	payloadsMaxArg := flag.Uint64("payloads-max", 160,
 		"The maximum object size to test, with 1 = 1 MB, and every increment is a double of the previous value.")
+	payloadsStepArg := flag.Uint64("payloads-step", 2,
+		"What the multiplicative increase in payload size per benchmark run is (size *= step). Must be > 1")
 	samplesArg := flag.Uint64("samples", 100,
 		"The number of samples to collect for each test of a single object size and thread count.")
 	bucketNameArg := flag.String("bucket-name", defaultBucketName,
@@ -198,18 +204,30 @@ func parseFlags() {
 		threadsMin = threadsMax
 	}
 
+	if *payloadsStepArg <= 1 {
+		panic("Payload size must increase in each step, please provide -payloads-step > 1!")
+	}
+	payloadsStep = *payloadsStepArg
+
+	if *threadsStepArg == 0 || *threadsStepArg == 1 {
+		panic("Threads step cannot be 0 or one. Provide negative values for additive behavior, positive for multiplicative. Use -dry-run to test behavior without running.")
+	}
+	threadsStep = *threadsStepArg
+
 	if *fullArg {
 		// if running the full exhaustive test, the threads and payload arguments get overridden with these
 		threadsMin = 1
 		threadsMax = 48
-		payloadsMin = 1   //  1 MB
-		payloadsMax = 256 // 160 MB
+		threadsStep = 1
+		payloadsMin = 1   //   1 MB
+		payloadsMax = 256 // 256 MB
 	}
 
 	if *throttlingModeArg {
 		// if running the network throttling test, the threads and payload arguments get overridden with these
 		threadsMin = 36
 		threadsMax = 36
+		threadsStep = 1
 		payloadsMin = 100 // 100 MB
 		payloadsMax = 100 // 100 MB
 		throttlingMode = *throttlingModeArg
@@ -287,8 +305,11 @@ func runBenchmark() {
 			printHeader(payload)
 		}
 
+		// extract thread count behavior to generator function
+		nextThreadCount := threadCountGenerator(threadsMin)
+
 		// run a test per thread count and object size combination
-		for t := threadsMin; t <= threadsMax; t++ {
+		for t := nextThreadCount(); t <= threadsMax; t = nextThreadCount() {
 			// if throttling mode, loop forever
 			for n := u1; true; n++ {
 				if !dryRun {

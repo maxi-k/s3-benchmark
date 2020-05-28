@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
 	"runtime"
 	"strings"
@@ -17,8 +18,26 @@ func payloadSizeGenerator() func() usize {
 
 	return func() usize {
 		thisPayloadSize := nextPayloadSize
-		nextPayloadSize *= 2
+		nextPayloadSize *= payloadsStep
 		return thisPayloadSize
+	}
+}
+
+func threadCountGenerator(min usize) func() usize {
+	nextThreadCount := usize(min)
+	if threadsStep > 1 {
+		return func() usize {
+			thisThreadCount := nextThreadCount
+			nextThreadCount = uint64(threadsStep * float64(nextThreadCount))
+			return thisThreadCount
+		}
+	} else {
+
+		return func() usize {
+			thisThreadCount := nextThreadCount
+			nextThreadCount += uint64(math.Abs(threadsStep))
+			return thisThreadCount
+		}
 	}
 }
 
