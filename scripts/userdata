@@ -10,7 +10,7 @@ if [ $ARCH = "aarch64" ]; then
 else
   binvar=linux-amd64
 fi
-curl -o s3-benchmark \
+curl -Lo s3-benchmark \
      https://github.com/maxi-k/s3-benchmark/raw/fit-to-usecase/build/$binvar/s3-benchmark
 
 # make it executable
@@ -21,4 +21,4 @@ prefix=csv-$(date +%F-%T)
 ./s3-benchmark -upload-csv $prefix
 
 # shutdown to terminate the instance after the test is complete
-shutdown
+shutdown now
