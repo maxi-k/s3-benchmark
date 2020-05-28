@@ -109,13 +109,11 @@ var dryRun bool
 // flag to only print the parsed configuration
 var onlyPrintConfig bool
 
+var programEntryTime time.Time
+
 // program entry point
 func main() {
-	// header := cpuStatCsvHeader()
-	// for idx, row := range cpuStatCsv() {
-	// 	fmt.Printf("%s \t : \t %s\n", header[idx], row)
-	// }
-	// return
+	programEntryTime = time.Now()
 	// parse the program arguments and set the global variables
 	parseFlags()
 	if onlyPrintConfig {
@@ -336,6 +334,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 	}
 
 	// start the timer for this benchmark
+	statSample := statSample()
 	benchmarkTimer := time.Now()
 
 	// submit all the test tasks
@@ -366,6 +365,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 
 	// stop the timer for this benchmark
 	totalTime := time.Now().Sub(benchmarkTimer)
+	statAverage := statSample.averageToNow()
 
 	// calculate the summary statistics for the first byte latencies
 	sort.Sort(ByFirstByte(benchmarkRecord.dataPoints))
@@ -404,12 +404,15 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 		benchmarkRecord.firstByte[avg], benchmarkRecord.firstByte[min], benchmarkRecord.firstByte[p25], benchmarkRecord.firstByte[p50], benchmarkRecord.firstByte[p75], benchmarkRecord.firstByte[p90], benchmarkRecord.firstByte[p99], benchmarkRecord.firstByte[max],
 		benchmarkRecord.lastByte[avg], benchmarkRecord.lastByte[min], benchmarkRecord.lastByte[p25], benchmarkRecord.lastByte[p50], benchmarkRecord.lastByte[p75], benchmarkRecord.lastByte[p90], benchmarkRecord.lastByte[p99], benchmarkRecord.lastByte[max])
 
-	// add the results to the csv array
-	benchLine := []string{
+	commonLine := []string{
 		fmt.Sprintf("%s", hostname),
 		fmt.Sprintf("%s", instanceType),
 		fmt.Sprintf("%d", payloadSize),
 		fmt.Sprintf("%d", benchmarkRecord.threads),
+	}
+
+	// add the results to the csv array
+	benchLine := append(commonLine, []string{
 		fmt.Sprintf("%.3f", rate),
 		fmt.Sprintf("%.1f", benchmarkRecord.firstByte[avg]),
 		fmt.Sprintf("%.1f", benchmarkRecord.firstByte[min]),
@@ -427,10 +430,9 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[p90]),
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[p99]),
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[max]),
-	}
+	}...)
 
-	// TODO: More measurements
-	statLine := cpuStatCsv()
+	statLine := append(commonLine, statAverage.ToCsvRow()...)
 	return benchLine, statLine
 }
 
