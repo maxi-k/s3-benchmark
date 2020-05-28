@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# Exit if no arguments were given
+([ -z $1 ] | [ -z $2 ])                                  && \
+    echo "\033[1;33mPlease provide:\033[0m"              && \
+    echo "(1) an upload size (e.g \"5G\") and"           && \
+    echo "(2) a valid s3 uri. (e.g \"s3://bucket/key\")" && \
+    exit
+# Name input variables
+SIZE=$1
+URI=$2
+SIZE_BYTES=$(numfmt --from=auto $SIZE)
+# Take head from /dev/urandom and feed it into cp.
+# --expected-size is required for streams > 50G
+# as mentioned in https://docs.aws.amazon.com/cli/latest/reference/s3/cp.html
+head -c $SIZE /dev/urandom | aws s3 cp --expected-size $SIZE_BYTES - $URI

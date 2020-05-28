@@ -16,9 +16,9 @@ curl -Lo s3-benchmark \
 # make it executable
 chmod +x s3-benchmark
 
-# run the exhaustive test 1 KB to 16 MB, and 1 to 48 threads; upload the csv results to S3
-prefix=csv-$(date +%F-%T)
-./s3-benchmark -upload-csv $prefix
+# run the benchmark, upload the results and OS stats to S3
+timestamp=csv-$(date +%F-%T)
+./s3-benchmark -upload-csv bench-$timestamp -upload-stats stats-$timestamp
 
 # shutdown to terminate the instance after the test is complete
 shutdown now
