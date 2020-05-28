@@ -1,0 +1,78 @@
+#!/bin/bash
+# Preamble: Parse parameters, print configuration
+source ./shared/util.sh
+ensure_parameters
+print_configuration
+
+# Create AWS CLI option strings for some parameters
+if [ -z $AVAILABILITY_ZONE ]; then
+    PLACEMENT_OPTION=""
+else
+    PLACEMENT_OPTION=<<EOF
+    "Placement": {
+      "AvailabilityZone": "$AVAILABILITY_ZONE"
+    },
+EOF
+fi
+echo -e "Calculated PLACEMENT_OPTION: \t $PLACEMENT_OPTION"
+
+if [ -z $KEY_NAME ]; then
+    KEY_NAME_OPTION=""
+else
+    KEY_NAME_OPTION=<<EOF
+    "KeyName": "$KEY_NAME",
+EOF
+fi
+echo -e "Calculated KEY_NAME_OPTION: \t $KEY_NAME_OPTION"
+
+# Base64-Encode the userdata start file for the json
+USERDATA_STR=$(base64 -w0 userdata)
+
+echo "Re-creating temporary configuration directory"
+confdir=./inst-tmp
+[ -e $confdir ] && rm -r $confdir
+mkdir $confdir
+
+
+i=0
+# read the list of instance types from stdin
+while read instance_type
+do
+    conffile=$confdir/conf-$instance_type.json
+    echo "Generating launch configuration file for $instance_type."
+    echo "Writing to $conffile."
+
+    # --iam-instance-profile Name=$IAM_PROFILE \
+    # --instance-initiated-shutdown-behavior terminate \
+    # --region $REGION \
+    # --user-data file://userdata
+    cat > $conffile <<-EOF
+{
+  "InstanceType": "$instance_type",
+  "ImageId": "$AMI",
+  $PLACEMENT_OPTION
+  $KEY_NAME_OPTION
+  "IamInstanceProfile": {
+    "Name": "$IAM_PROFILE"
+  },
+  "UserData": "$USERDATA_STR"
+}
+EOF
+
+    # request the spot instance
+    echo "Requesting spot instance for $instance_type"
+    aws ec2 request-spot-instances \
+        --instance-count 1 \
+        --type "one-time" \
+        --launch-specification file://$conffile
+
+    i=$[$i +1]
+
+    # sleep for 30 minutes after 5 instances
+    n=$(($i%5))
+    if [ $n -eq 0 ]
+    then
+        echo "Sleeping for 30 minutes"
+        sleep 1800
+    fi
+done

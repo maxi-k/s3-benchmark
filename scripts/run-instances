@@ -1,31 +1,11 @@
 #!/bin/bash
 
-print_missing_parameters() {
-    echo "Need to provide \"aws-settings\" bash file which sets at least required parameters!"
-    echo "Required Parameters: AMI, IAM_PROFILE, AVAILABILITY_ZONE"
-    echo "Optional Parameters: AVAILABILITY_ZONE, MARKET_TYPE, KEY_NAME"
-    exit 1
-}
-
-print_configuration() {
-    echo -e "+--------------- \033[1;32mRunning with Configuration:\033[0m--------------+"
-    echo -e "| REGION:\t $REGION \033[59G|"
-    echo -e "| AVAIL.ZONE:\t ${AVAILABILITY_ZONE:-unset} \033[59G|"
-    echo -e "| MARKET_TYPE:\t ${MARKET_TYPE:-unset} \033[59G|"
-    echo -e "| AMI:\t\t $AMI\033[59G|"
-    echo -e "| IAM_PROFILE:\t $IAM_PROFILE\033[59G|"
-    echo -e "| KEY_NAME:\t ${KEY_NAME:-unset} \033[59G|"
-    # echo -e "| SUBNET:\t $SUBNET\t\033[59G|"
-    echo -e "+---------------------------------------------------------+\n\n"
-}
-
-# Check that the aws settings file exists
-[ -f aws-settings ] && source ./aws-settings || print_missing_parameters
-
-REGION=${REGION:-"eu-central-1"}
-
+# Preamble: Parse parameters, print configuration
+source ./shared/util.sh
+ensure_parameters
 print_configuration
 
+# Create AWS CLI option strings for some parameters
 if [ -z $AVAILABILITY_ZONE ]; then
     PLACEMENT_OPTION=""
 else
@@ -33,17 +13,10 @@ else
 fi
 echo -e "Calculated PLACEMENT_OPTION: \t $PLACEMENT_OPTION"
 
-if [ -z $MARKET_TYPE ]; then
-    MARKET_TYPE_OPTION=""
-else
-    MARKET_TYPE_OPTION=" --instance-market-options MarketType=$MARKET_TYPE"
-fi
-echo -e "Calculated MARKET_TYPE_OPTION: \t $MARKET_TYPE_OPTION"
-
 if [ -z $KEY_NAME ]; then
     KEY_NAME_OPTION=""
 else
-    MARKET_TYPE_OPTION=" --key-name $KEY_NAME"
+    KEY_NAME_OPTION=" --key-name $KEY_NAME"
 fi
 echo -e "Calculated KEY_NAME_OPTION: \t $KEY_NAME_OPTION"
 
@@ -62,7 +35,6 @@ do
         --iam-instance-profile Name=$IAM_PROFILE \
         --instance-initiated-shutdown-behavior terminate \
         $PLACEMENT_OPTION \
-        $MARKET_TYPE_OPTION \
         $KEY_NAME_OPTION \
         --region $REGION \
         --user-data file://userdata
