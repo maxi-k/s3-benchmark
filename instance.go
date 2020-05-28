@@ -78,7 +78,7 @@ func getInstanceId() string {
 		Timeout: time.Second,
 	}
 
-	link := instanceDataUrl("meta-data/instance-id")
+	link := instanceDataUrl("instance-id")
 	response, err := httpClient.Get(link)
 	if err != nil {
 		return ""
