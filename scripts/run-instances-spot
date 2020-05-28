@@ -33,7 +33,6 @@ confdir=./inst-tmp
 [ -e $confdir ] && rm -r $confdir
 mkdir $confdir
 
-i=0
 # read the list of instance types from stdin
 while read instance_type
 do
@@ -71,14 +70,4 @@ EOF
         --instance-count 1 \
         --type "one-time" \
         --launch-specification file://$conffile
-
-    i=$[$i +1]
-
-    # sleep for 30 minutes after 5 instances
-    n=$(($i%5))
-    if [ $n -eq 0 ]
-    then
-        echo "Sleeping for 30 minutes"
-        sleep 1800
-    fi
 done
