@@ -39,11 +39,12 @@ const (
 
 // a benchmark record for one object size and thread count
 type benchmark struct {
-	objectSize usize
-	threads    int
-	firstByte  map[stat]float64
-	lastByte   map[stat]float64
-	dataPoints []latency
+	objectSize  usize
+	threads     int
+	firstByte   map[stat]float64
+	lastByte    map[stat]float64
+	dataPoints  []latency
+	sampleCount usize
 }
 
 // unit definitions
@@ -374,6 +375,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 	sumFirstByte := int64(0)
 	sumLastByte := int64(0)
 	benchmarkRecord.threads = int(threadCount)
+	benchmarkRecord.sampleCount = samples
 
 	// wait for all the results to come and collect the individual datapoints
 	for s := u1; s <= samples; s++ {
@@ -451,6 +453,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[p90]),
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[p99]),
 		fmt.Sprintf("%.1f", benchmarkRecord.lastByte[max]),
+		fmt.Sprintf("%d", benchmarkRecord.sampleCount),
 	}...)
 
 	statLine := append(commonLine, statAverage.ToCsvRow()...)
