@@ -133,7 +133,7 @@ func main() {
 
 func parseFlags() {
 	hwCores, hwThreads := getHardwareConfig()
-	threadsMinArg := flag.Uint64("threads-min", minimumOf(hwCores, 8),
+	threadsMinArg := flag.Uint64("threads-min", hwCores,
 		"The minimum number of threads to use when fetching objects from S3.")
 	threadsMaxArg := flag.Uint64("threads-max", hwThreads*2,
 		"The maximum number of threads to use when fetching objects from S3.")
