@@ -49,7 +49,7 @@ func getTargetSampleCount(threads, tasks usize) usize {
 	if !strings.Contains(instanceType, "xlarge") && !strings.Contains(instanceType, "metal") {
 		return minimumOf(50, tasks)
 	}
-	return minimumOf(threads*10, tasks)
+	return threads * tasks
 }
 
 func getHardwareConfig() (usize, usize) {
