@@ -91,8 +91,11 @@ var threadsMin usize
 var threadsMax usize
 var threadsStep float64
 
-// the number of samples to collect for each benchmark record
+// the number of samples to collect for each benchmark record and thread
 var samples usize
+
+// the maximum for how much samples to collect per benchmark record
+var runSampleCap usize
 
 // a test mode to find out when EC2 network throttling kicks in
 var throttlingMode bool
@@ -148,6 +151,8 @@ func parseFlags() {
 		"What the multiplicative increase in payload size per benchmark run is (size *= step). Must be > 1")
 	samplesArg := flag.Uint64("samples", 100,
 		"The number of samples to collect for each test of a single object size and thread count.")
+	samplesCapArg := flag.Uint64("samples-cap", 7200,
+		"The maximum number of samples to collect for each test of a single object size.")
 	bucketNameArg := flag.String("bucket-name", defaultBucketName,
 		"The name of the bucket where the test object is located")
 	objectNameArg := flag.String("object-name", defaultObjectName,
@@ -192,6 +197,7 @@ func parseFlags() {
 	threadsMin = *threadsMinArg
 	threadsMax = *threadsMaxArg
 	samples = *samplesArg
+	runSampleCap = *samplesCapArg
 	csvResults = *csvResultsArg
 	statResults = *statResultsArg
 	dryRun = *dryRunArg
