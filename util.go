@@ -41,6 +41,18 @@ func threadCountGenerator(min usize) func() usize {
 	}
 }
 
+func getMinMaxThreadCount(staticCount bool, minArg float64, maxArg float64) (usize, usize) {
+	if staticCount {
+		if !isWhole(minArg) || !isWhole(maxArg) {
+			panic("Passed float values to threads-min or threads-max with threads-static.")
+		}
+		return roundToUsize(minArg), roundToUsize(maxArg)
+	} else {
+		_, hwThreads := getHardwareConfig()
+		return roundToUsize(float64(hwThreads) * minArg), roundToUsize(float64(hwThreads) * maxArg)
+	}
+}
+
 // adjust the sample count for small instances and for low thread counts (so that the test doesn't take forever)
 func getTargetSampleCount(threads, tasks usize) usize {
 	if instanceType == "" {
@@ -76,6 +88,14 @@ func maximumOf(x, y usize) usize {
 		return x
 	}
 	return y
+}
+
+func roundToUsize(v float64) usize {
+	return uint64(math.Round(v))
+}
+
+func isWhole(v float64) bool {
+	return v == math.Trunc(v)
 }
 
 /*****

@@ -62,7 +62,7 @@ const defaultRegion = "eu-central-1"
 const defaultBucketName = "masters-thesis-mk"
 
 // default object name
-const defaultObjectName = "benchmark/largefile-5T.bin"
+const defaultObjectName = "benchmark/largefile.bin"
 
 // the hostname or EC2 instance id
 var hostname = getHostname()
@@ -87,6 +87,7 @@ var payloadsMax usize
 var payloadsStep usize
 
 // the min and max thread count to use in the test
+var useStaticThreadCount bool
 var threadsMin usize
 var threadsMax usize
 var threadsStep float64
@@ -136,11 +137,13 @@ func main() {
 }
 
 func parseFlags() {
-	hwCores, hwThreads := getHardwareConfig()
-	threadsMinArg := flag.Uint64("threads-min", hwCores,
-		"The minimum number of threads to use when fetching objects from S3.")
-	threadsMaxArg := flag.Uint64("threads-max", hwThreads*2,
-		"The maximum number of threads to use when fetching objects from S3.")
+	staticThreadsArg := flag.Bool("threads-static", false,
+		"If true, interprete threads-min and threads-max as static counts instead of multiples of the hardware thread count.\n"+
+			"It's advised to explicitly set threads-min and threads-max if this option is given.")
+	threadsMinArg := flag.Float64("threads-min", 1,
+		"The minimum number of threads to use when fetching objects from S3 as a multiple of the hardware thread count.")
+	threadsMaxArg := flag.Float64("threads-max", 2,
+		"The maximum number of threads to use when fetching objects from S3 as a multiple of the hardware thread count.")
 	threadsStepArg := flag.Float64("threads-step", 2,
 		"What increase in thread count per benchmark run is. Positive means multiplicative, negative means additive.")
 	payloadsMinArg := flag.Uint64("payloads-min", 10,
@@ -194,8 +197,8 @@ func parseFlags() {
 
 	payloadsMin = *payloadsMinArg
 	payloadsMax = *payloadsMaxArg
-	threadsMin = *threadsMinArg
-	threadsMax = *threadsMaxArg
+	useStaticThreadCount = *staticThreadsArg
+	threadsMin, threadsMax = getMinMaxThreadCount(useStaticThreadCount, *threadsMinArg, *threadsMaxArg)
 	samples = *samplesArg
 	runSampleCap = *samplesCapArg
 	csvResults = *csvResultsArg
