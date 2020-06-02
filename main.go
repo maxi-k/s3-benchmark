@@ -85,6 +85,7 @@ var objectSize usize
 var payloadsMin usize
 var payloadsMax usize
 var payloadsStep usize
+var payloadsReverse bool
 
 // the min and max thread count to use in the test
 var useStaticThreadCount bool
@@ -152,6 +153,8 @@ func parseFlags() {
 		"The maximum object size to test, with 1 = 1 MB, and every increment is a double of the previous value.")
 	payloadsStepArg := flag.Uint64("payloads-step", 2,
 		"What the multiplicative increase in payload size per benchmark run is (size *= step). Must be > 1")
+	payloadsReverseArg := flag.Bool("payloads-reverse", false,
+		"If true, start with the largest payload size first and decrease from there")
 	samplesArg := flag.Uint64("samples", 100,
 		"The number of samples to collect for each test of a single object size and thread count.")
 	samplesCapArg := flag.Uint64("samples-cap", 7200,
@@ -197,6 +200,7 @@ func parseFlags() {
 
 	payloadsMin = *payloadsMinArg
 	payloadsMax = *payloadsMaxArg
+	payloadsReverse = *payloadsReverseArg
 	useStaticThreadCount = *staticThreadsArg
 	threadsMin, threadsMax = getMinMaxThreadCount(useStaticThreadCount, *threadsMinArg, *threadsMaxArg)
 	samples = *samplesArg
@@ -304,11 +308,10 @@ func runBenchmark() {
 	var csvStats [][]string
 
 	// an object size iterator that starts from 1 MB and doubles the size on every iteration
-	nextPayload := payloadSizeGenerator()
-	maxSize := payloadsMax * unitMB
+	payloadIter := payloadSizeGenerator()
 
 	// loop over every payload size
-	for payload := nextPayload(); payload <= maxSize; payload = nextPayload() {
+	for payload, hasNext := payloadIter(); hasNext; payload, hasNext = payloadIter() {
 
 		// print the header for the benchmark of this object size
 		if !dryRun {

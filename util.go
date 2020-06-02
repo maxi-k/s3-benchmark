@@ -13,13 +13,23 @@ import (
  *****/
 
 // returns an object size iterator, starting from 1 MB and double in size by each iteration
-func payloadSizeGenerator() func() usize {
-	nextPayloadSize := usize(payloadsMin * unitMB)
-
-	return func() usize {
-		thisPayloadSize := nextPayloadSize
-		nextPayloadSize *= payloadsStep
-		return thisPayloadSize
+func payloadSizeGenerator() func() (usize, bool) {
+	if payloadsReverse {
+		nextPayloadSize := usize(payloadsMax * unitMB)
+		minPayloadSize := payloadsMin * unitMB
+		return func() (usize, bool) {
+			thisPayloadSize := nextPayloadSize
+			nextPayloadSize /= payloadsStep
+			return thisPayloadSize, thisPayloadSize >= minPayloadSize
+		}
+	} else {
+		nextPayloadSize := usize(payloadsMin * unitMB)
+		maxPayloadSize := payloadsMax * unitMB
+		return func() (usize, bool) {
+			thisPayloadSize := nextPayloadSize
+			nextPayloadSize *= payloadsStep
+			return thisPayloadSize, nextPayloadSize <= maxPayloadSize
+		}
 	}
 }
 
