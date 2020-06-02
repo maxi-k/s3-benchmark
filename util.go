@@ -28,7 +28,7 @@ func payloadSizeGenerator() func() (usize, bool) {
 		return func() (usize, bool) {
 			thisPayloadSize := nextPayloadSize
 			nextPayloadSize *= payloadsStep
-			return thisPayloadSize, nextPayloadSize <= maxPayloadSize
+			return thisPayloadSize, thisPayloadSize <= maxPayloadSize
 		}
 	}
 }
@@ -140,12 +140,12 @@ func (r *byteRange) Size() usize {
 // formats bytes to KB, MB or GB
 func byteFormat(bytes float64) string {
 	if bytes >= unitGB {
-		return fmt.Sprintf("%.f GB", bytes/unitGB)
+		return fmt.Sprintf("%.f GiB", bytes/unitGB)
 	}
 	if bytes >= unitMB {
-		return fmt.Sprintf("%.f MB", bytes/unitMB)
+		return fmt.Sprintf("%.f MiB", bytes/unitMB)
 	}
-	return fmt.Sprintf("%.f KB", bytes/unitKB)
+	return fmt.Sprintf("%.f KiB", bytes/unitKB)
 }
 
 // comparator to sort by first byte latency
@@ -207,5 +207,5 @@ func printConfiguration() {
 }
 
 func printDryRun(threadCount usize, payload usize) {
-	fmt.Printf("⟶ Dry Run Request: \t \033[1m%d\033[0m \t Threads and Payload Size \t \033[1m%d\033[0m \n", threadCount, payload)
+	fmt.Printf("⟶ Dry Run Request: \t \033[1m%d\033[0m \t Threads and Payload Size \t \033[1m%s\033[0m \n", threadCount, byteFormat(float64(payload)))
 }
