@@ -1,0 +1,21 @@
+#!/bin/sh
+
+# Exit if no arguments were given
+([ -z $1 ] | [ -z $2 ] | [ -z $3 ])                                && \
+    echo "\033[1;33mPlease provide:\033[0m"                        && \
+    echo "(1) a per-file upload size (e.g \"5G\") and"             && \
+    echo "(2) a file count"                                        && \
+    echo "(3) a valid s3 uri as prefix. (e.g \"s3://bucket/key\")" && \
+    echo "(4) a file postfix (default: .bin)"                      && \
+    exit
+# Name input variables
+SIZE=$1
+COUNT=$2
+PREFIX=$3
+SUFFIX=${4:-".bin"}
+
+for i in $(seq 0 $((COUNT-1))); do
+    uri="$PREFIX$i$SUFFIX"
+    echo "./gen-large-file $SIZE $uri"
+    ./gen-large-file $SIZE $uri
+done

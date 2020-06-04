@@ -62,7 +62,7 @@ const defaultRegion = "eu-central-1"
 const defaultBucketName = "masters-thesis-mk"
 
 // default object name
-const defaultObjectName = "benchmark/largefile-1T.bin"
+const defaultObjectName = "benchmark/largefile-1G-zero.bin"
 
 // the hostname or EC2 instance id
 var hostname = getHostname()

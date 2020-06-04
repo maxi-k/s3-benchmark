@@ -25,6 +25,14 @@ EOF
 fi
 echo -e "Calculated KEY_NAME_OPTION: \n $KEY_NAME_OPTION\n\n"
 
+if [ -z $1 ]; then
+    echo "No argument given, maximum spot instance price will be on-demand price"
+    SPOT_PRICE_OPTION=""
+else
+    echo "Using $1 as maximum spot price."
+    SPOT_PRICE_OPTION="--spot-price \"$1\""
+fi
+
 # Base64-Encode the userdata start file for the json
 USERDATA_STR=$(base64 -w0 userdata)
 
@@ -69,5 +77,6 @@ EOF
     aws ec2 request-spot-instances \
         --instance-count 1 \
         --type "one-time" \
+        $SPOT_PRICE_OPTION \
         --launch-specification file://$conffile
 done

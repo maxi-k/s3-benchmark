@@ -1,0 +1,110 @@
+#!/bin/bash
+
+if [ -z $1 ] || [ -z $2 ]; then
+  echo -e "\033[1;31mPlease provide two parameters:\033[0m"
+  echo " - (1) the name of the new iam"
+  echo " - (2) the name of the bucket it should have permissions on"
+  exit 2
+fi
+
+IAM_NAME=s3-benchmark-$1
+BUCKET_NAME=$2
+IAM_ROLE_NAME=$IAM_NAME-bucket-$BUCKET_NAME-full-access
+
+echo -e "--------------------- CREATING IAM ROLE ----------------------\n"
+
+ensure_tmp_dir() {
+  [ -e iam-tmp ] && rm -r iam-tmp
+  mkdir iam-tmp
+}
+
+# Define a function to create an IAM role
+create_role() {
+  ensure_tmp_dir
+  cat > iam-tmp/trust-policy.json <<-EOF
+{
+  "Version": "2012-10-17",
+  "Statement": {
+    "Effect": "Allow",
+    "Principal": {"Service": "ec2.amazonaws.com"},
+    "Action": "sts:AssumeRole"
+  }
+}
+EOF
+
+  aws iam create-role \
+    --role-name $IAM_ROLE_NAME \
+    --assume-role-policy-document file://iam-tmp/trust-policy.json
+}
+
+permit_role() {
+  ensure_tmp_dir
+  cat > iam-tmp/permission-policy.json <<-EOF
+{
+  "Version": "2012-10-17",
+  "Statement": [
+      {
+          "Sid": "ListObjectsInBucket",
+          "Effect": "Allow",
+          "Action": ["s3:ListBucket"],
+          "Resource": ["arn:aws:s3:::${BUCKET_NAME}"]
+        },
+      {
+          "Sid": "AllObjectActions",
+          "Effect": "Allow",
+          "Action": "s3:*Object",
+          "Resource": ["arn:aws:s3:::${BUCKET_NAME}/*"]
+        }
+  ]
+}
+EOF
+
+  aws iam put-role-policy \
+    --role-name $IAM_ROLE_NAME \
+    --policy-name policy-$IAM_ROLE_NAME \
+    --policy-document file://iam-tmp/permission-policy.json
+}
+
+# Create the role if it does not exist yet 
+aws iam get-role \
+  --role-name $IAM_ROLE_NAME &>/dev/null    && \
+  echo "Role exists already, not creating"  || \
+  create_role
+
+# Add permissions to the role
+permit_role
+
+rm -rf iam-tmp
+
+
+echo -e "\n--------------------------------------------------------------\n\n"
+
+
+echo -e "\n-------------------- CREATING IAM PROFILE --------------------\n"
+
+create_profile() {
+  aws iam create-instance-profile \
+    --instance-profile-name $IAM_NAME
+}
+
+aws iam get-instance-profile \
+  --instance-profile-name $IAM_NAME &>/dev/null     && \
+  echo "IAM Profile already exists, not creating"   || \
+  create_profile 
+
+echo -e "\n--------------------------------------------------------------\n\n"
+
+
+echo -e "\n--------------------- ASSIGNING IAM ROLE ---------------------\n"
+
+aws iam add-role-to-instance-profile \
+  --instance-profile-name $IAM_NAME \
+  --role-name $IAM_ROLE_NAME
+
+echo -e "\n--------------------------------------------------------------\n\n\n\n"
+
+echo -e "IAM Profile with name \033[1m$IAM_NAME\033[0m and role \033[1m$IAM_ROLE_NAME\033[0m with permission on \033[1m$BUCKET_NAME\033[0m now exist \n\n"
+
+echo "Output from  the AWS Instance Profile API: "
+aws iam get-instance-profile \
+  --instance-profile-name $IAM_NAME 

@@ -1,3 +1,0 @@
-#!/bin/sh
-aws ec2 describe-spot-price-history $@ \
-    --product-descriptions "Linux/UNIX"
