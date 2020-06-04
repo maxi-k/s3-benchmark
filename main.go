@@ -483,9 +483,8 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 }
 
 func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results chan<- latency) {
+	key := fmt.Sprintf(objectNamePattern, o) // generateS3Key(hostname, o, payloadSize)
 	for range tasks {
-
-		key := fmt.Sprintf(objectNamePattern, o) // generateS3Key(hostname, o, payloadSize)
 		byteRange := randomByteRange(objectSize, payloadSize)
 
 		// start the timer to measure the first byte and last byte latencies
