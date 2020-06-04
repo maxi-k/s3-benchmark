@@ -11,7 +11,7 @@ else
     binvar=linux-amd64
 fi
 curl -Lo s3-benchmark \
-     https://github.com/maxi-k/s3-benchmark/raw/fit-to-usecase/build/$binvar/s3-benchmark
+     https://github.com/maxi-k/s3-benchmark/raw/usecase-multifile/build/$binvar/s3-benchmark
 
 # make it executable
 chmod +x s3-benchmark
@@ -21,10 +21,9 @@ timestamp=csv-$(date +%F--%H-%M-%S)
 ./s3-benchmark \
     -upload-csv bench-$timestamp \
     -upload-stats stats-$timestamp \
-    -threads-min 2 -threads-max 2 \
-    -payloads-min 32 -payloads-max 32 \
-    -samples 10
-    # -payloads-reverse
+    -threads-min 1 -threads-max 2 \
+    -payloads-min 1 -payloads-max 64 \
+    -payloads-reverse
 
 
 # shutdown to terminate the instance after the test is complete
