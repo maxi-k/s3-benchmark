@@ -19,11 +19,12 @@ chmod +x s3-benchmark
 # run the benchmark, upload the results and OS stats to S3
 timestamp=csv-$(date +%F--%H-%M-%S)
 ./s3-benchmark \
+    -object-name-pattern "benchmark/multifile/size-%sM-zero/%s.bin" \
     -upload-csv bench-$timestamp \
     -upload-stats stats-$timestamp \
     -threads-min 1 -threads-max 2 \
-    -payloads-min 1 -payloads-max 64 \
-    -payloads-reverse
+    -payloads-min 1 -payloads-max 64
+    # -payloads-reverse
 
 
 # shutdown to terminate the instance after the test is complete

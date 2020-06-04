@@ -62,7 +62,7 @@ const defaultRegion = "eu-central-1"
 const defaultBucketName = "masters-thesis-mk"
 
 // default object name
-const defaultObjectNamePattern = "benchmark/multifile/size-64M/%d.bin"
+const defaultObjectNamePattern = "benchmark/multifile/size-%sM/%s.bin"
 
 // the hostname or EC2 instance id
 var hostname = getHostname()
@@ -78,8 +78,6 @@ var instanceType = getInstanceType()
 
 var bucketName string
 var objectNamePattern string
-var objectInfo s3.HeadObjectOutput
-var objectSize usize
 
 // the min and max object sizes to test - 1 = 1 MB, and the size doubles with every increment
 var payloadsMin usize
@@ -278,35 +276,23 @@ func setupS3Client() {
 }
 
 func setup() {
-	objectName := fmt.Sprintf(objectNamePattern, 0)
 	fmt.Print("\n------------ \033[1;32mSETUP\033[0m ------------\n\n")
-	fmt.Print("--- Fetching object size ---\n")
-	fmt.Printf("Bucket: %s \n Object: %s \n", bucketName, objectName)
+	fmt.Printf("Bucket: %s, fetching object heads...\n", bucketName)
+	// Test that every payload size folder exists
+	payloadIter := payloadSizeGenerator()
+	for payload, hasNext := payloadIter(); hasNext; payload, hasNext = payloadIter() {
+		objectName := fmt.Sprintf(objectNamePattern, fmt.Sprintf("%d", payload/unitMB), "0")
+		fmt.Printf("Object: %s \n", objectName)
 
-	objReq := s3Client.HeadObjectRequest(&s3.HeadObjectInput{
-		Bucket: aws.String(bucketName),
-		Key:    &objectName,
-	})
-	objRes, err := objReq.Send()
-	if err != nil {
-		panic("Failed to get object head" + err.Error())
+		objReq := s3Client.HeadObjectRequest(&s3.HeadObjectInput{
+			Bucket: aws.String(bucketName),
+			Key:    &objectName,
+		})
+		_, err := objReq.Send()
+		if err != nil {
+			panic("Failed to get object head" + err.Error())
+		}
 	}
-
-	objectInfo = *objRes
-	objectSize = usize(*objRes.ContentLength)
-	objectSizeMB := objectSize / unitMB
-
-	if payloadsMin > objectSizeMB {
-		fmt.Printf("Min Payload Size %d > objectSize %d, shrinking it.", payloadsMin, objectSizeMB)
-		payloadsMin = objectSizeMB
-	}
-
-	if payloadsMax > objectSizeMB {
-		fmt.Printf("Max Payload Size %d > objectSize %d, shrinking it.", payloadsMax, objectSizeMB)
-		payloadsMax = objectSizeMB
-	}
-
-	fmt.Print("\n")
 }
 
 func runBenchmark() {
@@ -372,9 +358,10 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 	// a channel to receive results from the test tasks back on the main thread
 	results := make(chan latency, samples)
 
+	objPattern := fmt.Sprintf(objectNamePattern, fmt.Sprintf("%d", payloadSize/unitMB), "%d")
 	// create the workers for all the threads in this test
 	for w := u1; w <= threadCount; w++ {
-		go asyncObjectRequest(w-1, payloadSize, testTasks, results)
+		go asyncObjectRequest(w-1, objPattern, payloadSize, testTasks, results)
 	}
 
 	// start the timer for this benchmark
@@ -482,11 +469,9 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 	return benchLine, statLine
 }
 
-func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results chan<- latency) {
-	key := fmt.Sprintf(objectNamePattern, o) // generateS3Key(hostname, o, payloadSize)
+func asyncObjectRequest(o usize, objPattern string, payloadSize usize, tasks <-chan usize, results chan<- latency) {
+	key := fmt.Sprintf(objPattern, o) // generateS3Key(hostname, o, payloadSize)
 	for range tasks {
-		byteRange := randomByteRange(objectSize, payloadSize)
-
 		// start the timer to measure the first byte and last byte latencies
 		latencyTimer := time.Now()
 
@@ -494,7 +479,6 @@ func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results 
 		req := s3Client.GetObjectRequest(&s3.GetObjectInput{
 			Bucket: aws.String(bucketName),
 			Key:    aws.String(key),
-			Range:  aws.String(byteRange.ToHTTPHeader()),
 		})
 
 		resp, err := req.Send()
@@ -508,7 +492,7 @@ func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results 
 		firstByte := time.Now().Sub(latencyTimer)
 
 		// create a buffer to copy the S3 object body to
-		var buf = make([]byte, byteRange.Size())
+		var buf = make([]byte, payloadSize)
 
 		// read the s3 object body into the buffer
 		size := 0
