@@ -294,15 +294,16 @@ func setup() {
 
 	objectInfo = *objRes
 	objectSize = usize(*objRes.ContentLength)
+	objectSizeMB := objectSize / unitMB
 
-	if payloadsMin > objectSize {
-		fmt.Printf("Min Payload Size %d > objectSize %d, shrinking it.", payloadsMin, objectSize)
-		payloadsMin = objectSize
+	if payloadsMin > objectSizeMB {
+		fmt.Printf("Min Payload Size %d > objectSize %d, shrinking it.", payloadsMin, objectSizeMB)
+		payloadsMin = objectSizeMB
 	}
 
-	if payloadsMax > objectSize {
-		fmt.Printf("Max Payload Size %d > objectSize %d, shrinking it.", payloadsMax, objectSize)
-		payloadsMax = objectSize
+	if payloadsMax > objectSizeMB {
+		fmt.Printf("Max Payload Size %d > objectSize %d, shrinking it.", payloadsMax, objectSizeMB)
+		payloadsMax = objectSizeMB
 	}
 
 	fmt.Print("\n")
