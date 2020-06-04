@@ -166,7 +166,7 @@ func (a ByLastByte) Less(i, j int) bool { return a[i].LastByte < a[j].LastByte }
  *  PRINT UTILITIES
  *****/
 
-const printEOL = "\033[59G|"
+const printEOL = "\033[70G|"
 
 func printIntVar(name string, value usize) {
 	fmt.Printf("| \033[1m%s\033[0m\t:\t%d%s\n", name, value, printEOL)
@@ -185,22 +185,22 @@ func printStrVar(name string, value string) {
 }
 
 func printConfiguration() {
-	fmt.Printf("\n+------------------- \033[1;32mRUN CONFIGURATION\033[0m -------------------+\n")
+	fmt.Printf("\n+------------------------- \033[1;32mRUN CONFIGURATION\033[0m ------------------------+\n")
 
 	printBoolVar("Dry Run?", dryRun)
 	printStrVar("EC2 Region", region)
 	printStrVar("Instance Type", instanceType)
 	printStrVar("Bucket Name", bucketName)
-	printStrVar("Object Name", objectName)
+	printStrVar("Object Name", objectNamePattern)
 	printIntVar("Payloads Min", payloadsMin)
 	printIntVar("Payloads Max", payloadsMax)
 	printIntVar("Threads Min", threadsMin)
 	printIntVar("Threads Max", threadsMax)
 	printIntVar("Sample Count", samples)
-	endStr := "+---------------------------------------------------------+\n"
+	endStr := "+--------------------------------------------------------------------+\n"
 	fmt.Print(endStr)
 
-	fmt.Printf("\n+------------------- \033[1;32mDETECTED HARDWARE\033[0m -------------------+\n")
+	fmt.Printf("\n+------------------------- \033[1;32mDETECTED HARDWARE\033[0m ------------------------+\n")
 	hwCores, hwThreads := getHardwareConfig()
 	printIntVar("Detected Cores", hwCores)
 	printIntVar("Detected HW Threads", hwThreads)

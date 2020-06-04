@@ -62,7 +62,7 @@ const defaultRegion = "eu-central-1"
 const defaultBucketName = "masters-thesis-mk"
 
 // default object name
-const defaultObjectName = "benchmark/largefile-1G-zero.bin"
+const defaultObjectNamePattern = "benchmark/multifile/size-64M/%d.bin"
 
 // the hostname or EC2 instance id
 var hostname = getHostname()
@@ -77,7 +77,7 @@ var endpoint string
 var instanceType = getInstanceType()
 
 var bucketName string
-var objectName string
+var objectNamePattern string
 var objectInfo s3.HeadObjectOutput
 var objectSize usize
 
@@ -161,7 +161,7 @@ func parseFlags() {
 		"The maximum number of samples to collect for each test of a single object size.")
 	bucketNameArg := flag.String("bucket-name", defaultBucketName,
 		"The name of the bucket where the test object is located")
-	objectNameArg := flag.String("object-name", defaultObjectName,
+	objectNamePatternArg := flag.String("object-name-pattern", defaultObjectNamePattern,
 		"The name of the large object file where data will be fetched from")
 	regionArg := flag.String("region", defaultRegion,
 		"Sets the AWS region to use for the S3 bucket. Only applies if the bucket doesn't already exist.")
@@ -186,9 +186,7 @@ func parseFlags() {
 		bucketName = *bucketNameArg
 	}
 
-	if *objectNameArg != "" {
-		objectName = *objectNameArg
-	}
+	objectNamePattern = *objectNamePatternArg
 
 	if *regionArg != "" {
 		region = *regionArg
@@ -280,7 +278,8 @@ func setupS3Client() {
 }
 
 func setup() {
-	fmt.Print("\n---------- \033[1;32mSETUP\033[0m ----------\n\n")
+	objectName := fmt.Sprintf(objectNamePattern, 0)
+	fmt.Print("\n------------ \033[1;32mSETUP\033[0m ------------\n\n")
 	fmt.Print("--- Fetching object size ---\n")
 	fmt.Printf("Bucket: %s \n Object: %s \n", bucketName, objectName)
 
@@ -364,7 +363,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 
 	// create the workers for all the threads in this test
 	for w := u1; w <= threadCount; w++ {
-		go asyncObjectRequest(w, payloadSize, testTasks, results)
+		go asyncObjectRequest(w-1, payloadSize, testTasks, results)
 	}
 
 	// start the timer for this benchmark
@@ -475,7 +474,7 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 func asyncObjectRequest(o usize, payloadSize usize, tasks <-chan usize, results chan<- latency) {
 	for range tasks {
 
-		key := objectName // generateS3Key(hostname, o, payloadSize)
+		key := fmt.Sprintf(objectNamePattern, o) // generateS3Key(hostname, o, payloadSize)
 		byteRange := randomByteRange(objectSize, payloadSize)
 
 		// start the timer to measure the first byte and last byte latencies
@@ -552,7 +551,7 @@ func printHeader(objectSize usize) {
 
 // cleans up the objects uploaded to S3 for this test (but doesn't remove the bucket)
 func cleanup() {
-	fmt.Print("\n---------- \033[1;32mCLEANUP\033[0m ----------\n\n")
+	fmt.Print("\n---------- \033[1;32mCLEANUP\033[0m ------------\n\n")
 
 	// fmt.Printf("Deleting any objects uploaded from %s\n", hostname)
 	fmt.Printf("NO-OP")
