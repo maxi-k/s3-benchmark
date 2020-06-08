@@ -2,9 +2,9 @@
 i=0
 
 # EC2 instance settings
-AMI=ami-061392db613a6357b
-IAM_PROFILE=Admin
-REGION=us-west-2
+AMI=ami-0a02ee601d742e89f
+IAM_PROFILE=s3-benchmark-dvassallo
+REGION=eu-central-1
 SUBNET=SUBNET_ID
 
 # read the list of instance types from stdin
@@ -14,7 +14,14 @@ do
     echo $instance_type
 
     # start the instance
-    aws ec2 run-instances --instance-type $instance_type --image-id $AMI --count 1 --iam-instance-profile Name=$IAM_PROFILE --instance-initiated-shutdown-behavior terminate --user-data file://userdata --region $REGION --subnet-id $SUBNET
+    aws ec2 run-instances \
+      --instance-type $instance_type \
+      --image-id $AMI \
+      --count 1  \
+      --iam-instance-profile Name=$IAM_PROFILE \
+      --instance-initiated-shutdown-behavior terminate \
+      --user-data file://userdata \
+      --region $REGION
     i=$[$i +1]
 
     # sleep for 30 minutes after 5 instances
