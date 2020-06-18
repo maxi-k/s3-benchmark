@@ -244,8 +244,8 @@ func parseFlags() {
 	if *throttlingModeArg {
 		// if running the network throttling test, the threads and payload arguments get overridden with these
 		useStaticThreadCount = false
-		threadsMin = 1
-		threadsMax = 1
+		threadsMin = 2
+		threadsMax = 2
 		threadsStep = 1
 		payloadsMin = 20 // 10 MB
 		payloadsMax = 20 // 10 MB
