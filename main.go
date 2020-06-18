@@ -472,9 +472,9 @@ func execTest(threadCount usize, payloadSize usize, runNumber usize) ([]string, 
 
 	// determine what to put in the first column of the results
 	c := benchmarkRecord.threads
-	if throttlingMode {
-		c = int(runNumber)
-	}
+	//if throttlingMode {
+	//	c = int(runNumber)
+	//}
 
 	// print the results to stdout
 	fmt.Printf("| %7d | \033[1;31m%9.1f MB/s\033[0m |%5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f |%5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f %5.0f |\n",
