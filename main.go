@@ -62,7 +62,7 @@ const defaultRegion = "eu-central-1"
 const defaultBucketName = "masters-thesis-mk"
 
 // default object name
-const defaultObjectName = "benchmark/largefile-4T.bin"
+const defaultObjectName = "benchmark/largefile-100G.bin"
 
 // the hostname or EC2 instance id
 var hostname = getHostname()
@@ -101,6 +101,7 @@ var runSampleCap usize
 
 // a test mode to find out when EC2 network throttling kicks in
 var throttlingMode bool
+var throttlingModeCsvInterval usize
 
 // if not empty, the results of the test get uploaded to S3 using this key prefix
 var csvResults string
@@ -171,6 +172,8 @@ func parseFlags() {
 		"Runs the full exhaustive test, and overrides the threads and payload arguments.")
 	throttlingModeArg := flag.Bool("throttling-mode", false,
 		"Runs a continuous test to find out when EC2 network throttling kicks in.")
+	throttlingModeCsvIntervalArg := flag.Uint64("throttling-csv-interval", 128,
+		"After how many test runs in throttling mode should the csv results be uploaded to s3?")
 	csvResultsArg := flag.String("upload-csv", "",
 		"Uploads the test results to S3 as a CSV file.")
 	statResultsArg := flag.String("upload-stats", "",
@@ -230,6 +233,7 @@ func parseFlags() {
 
 	if *fullArg {
 		// if running the full exhaustive test, the threads and payload arguments get overridden with these
+		useStaticThreadCount = true
 		threadsMin = 1
 		threadsMax = 48
 		threadsStep = 1
@@ -239,13 +243,15 @@ func parseFlags() {
 
 	if *throttlingModeArg {
 		// if running the network throttling test, the threads and payload arguments get overridden with these
-		threadsMin = 36
-		threadsMax = 36
+		useStaticThreadCount = false
+		threadsMin = 1
+		threadsMax = 1
 		threadsStep = 1
-		payloadsMin = 100 // 100 MB
-		payloadsMax = 100 // 100 MB
+		payloadsMin = 20 // 10 MB
+		payloadsMax = 20 // 10 MB
 		throttlingMode = *throttlingModeArg
 	}
+	throttlingModeCsvInterval = *throttlingModeCsvIntervalArg
 
 	printConfiguration()
 }
@@ -332,7 +338,34 @@ func runBenchmark() {
 				} else {
 					printDryRun(t, payload)
 				}
-				if !throttlingMode {
+				if throttlingMode {
+					if n%throttlingModeCsvInterval == 0 {
+						timeStr := time.Now().Format("2006-01-02--15-04-05")
+						nStr := fmt.Sprintf("%d", n)
+						if csvResults != "" {
+							filename := "results/" + csvResults + "-" + nStr + "-@" + timeStr + "@-" + instanceType
+							if dryRun {
+								fmt.Printf("Would upload file %s with %d rows to s3\n", filename, len(csvRecords))
+							} else {
+								uploadCsv(filename, csvRecords)
+							}
+						}
+
+						if statResults != "" {
+							filename := "stats/" + statResults + "-" + nStr + "-@" + timeStr + "@-" + instanceType
+							if dryRun {
+								fmt.Printf("Would upload file %s with %d rows to s3\n", filename, len(csvStats))
+							} else {
+								uploadCsv(filename, csvStats)
+							}
+						}
+						csvRecords = nil
+						csvStats = nil
+						if dryRun {
+							fmt.Println("Uploaded and cleared records...")
+						}
+					}
+				} else {
 					break
 				}
 			}
@@ -343,12 +376,22 @@ func runBenchmark() {
 	}
 
 	// if the csv option is true, upload the csv results to S3
-	if csvResults != "" && !dryRun {
-		uploadCsv("results/"+csvResults+"-"+instanceType, csvRecords)
+	if csvResults != "" {
+		filename := "results/" + csvResults + "-" + instanceType
+		if dryRun {
+			fmt.Printf("Would upload file %s with %d rows to s3\n", filename, len(csvRecords))
+		} else {
+			uploadCsv(filename, csvRecords)
+		}
 	}
 
-	if statResults != "" && !dryRun {
-		uploadCsv("stats/"+statResults+"-"+instanceType, csvStats)
+	if statResults != "" {
+		filename := "stats/" + statResults + "-" + instanceType
+		if dryRun {
+			fmt.Printf("Would upload file %s with %d rows to s3\n", filename, len(csvStats))
+		} else {
+			uploadCsv(filename, csvStats)
+		}
 	}
 }
 
