@@ -343,7 +343,7 @@ func runBenchmark() {
 						timeStr := time.Now().Format("2006-01-02--15-04-05")
 						nStr := fmt.Sprintf("%d", n)
 						if csvResults != "" {
-							filename := "results/" + csvResults + "-" + nStr + "-@" + timeStr + "@-" + instanceType
+							filename := "results/" + csvResults + "/throttling-" + nStr + "-" + timeStr + "-" + instanceType
 							if dryRun {
 								fmt.Printf("Would upload file %s with %d rows to s3\n", filename, len(csvRecords))
 							} else {
@@ -352,7 +352,7 @@ func runBenchmark() {
 						}
 
 						if statResults != "" {
-							filename := "stats/" + statResults + "-" + nStr + "-@" + timeStr + "@-" + instanceType
+							filename := "stats/" + statResults + "/throttling-" + nStr + "-" + timeStr + "-" + instanceType
 							if dryRun {
 								fmt.Printf("Would upload file %s with %d rows to s3\n", filename, len(csvStats))
 							} else {
