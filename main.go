@@ -245,8 +245,8 @@ func parseFlags() {
 		useStaticThreadCount = false
 		threadsMin, threadsMax = getMinMaxThreadCount(false, 2, 2)
 		threadsStep = 1
-		payloadsMin = 20 // 10 MB
-		payloadsMax = 20 // 10 MB
+		payloadsMin = 25 // 25 MB
+		payloadsMax = 25 // 25 MB
 		throttlingMode = *throttlingModeArg
 	}
 	throttlingModeCsvInterval = *throttlingModeCsvIntervalArg
