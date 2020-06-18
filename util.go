@@ -196,6 +196,7 @@ func printConfiguration() {
 	printIntVar("Payloads Max", payloadsMax)
 	printIntVar("Threads Min", threadsMin)
 	printIntVar("Threads Max", threadsMax)
+	printBoolVar("Threads Dyn", !useStaticThreadCount)
 	printIntVar("Sample Count", samples)
 	endStr := "+---------------------------------------------------------+\n"
 	fmt.Print(endStr)
