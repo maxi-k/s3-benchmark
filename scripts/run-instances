@@ -20,6 +20,8 @@ else
 fi
 echo -e "Calculated KEY_NAME_OPTION: \t $KEY_NAME_OPTION"
 
+USERDATA_FILE=${1:-"userdata-s3"}
+
 i=0
 # read the list of instance types from stdin
 while read instance_type
@@ -37,7 +39,7 @@ do
         $PLACEMENT_OPTION \
         $KEY_NAME_OPTION \
         --region $REGION \
-        --user-data file://userdata
+        --user-data file://$USERDATA_FILE
         # --subnet-id $SUBNET
         i=$[$i +1]
 

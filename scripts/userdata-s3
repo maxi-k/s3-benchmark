@@ -23,7 +23,9 @@ timestamp=csv-$(date +%F--%H-%M-%S)
     -upload-stats stats-$timestamp \
     -threads-min 2 -threads-max 2 \
     -payloads-min 32 -payloads-max 32 \
-    -samples 10
+    -throttling-mode \
+    -throttling-csv-interval 64 \
+    -samples 20
     # -payloads-reverse
 
 

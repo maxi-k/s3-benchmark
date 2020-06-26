@@ -1,0 +1,43 @@
+#!/bin/bash
+
+TERMCMD="echo shutting down" #"shutdown now"
+
+cd /home/ubuntu
+# sudo apt install -y iperf3 awscli
+command -v iperf3 &>/dev/null || (echo "iperf3 not installed, shutting down" ; $TERMCMD)
+command -v aws &>/dev/null || (echo "aws cli not installed, shutting down" ; $TERMCMD)
+
+[[ $SERVER_IP == *"SERVER_IP_ADDRESS"* ]] && echo "Server IP not set, exiting" && $TERMCMD 
+PER_FILE_ENTRIES=32
+CORE_COUNT=$(lscpu -p | grep "^[0-9]" | wc -l)
+
+# Is replaced with actual ip by the starter script after the server started
+SERVER_IP="localhost" #"%%SERVER_IP_ADDRESS%%"
+TIMESTAMP=csv-$(date +%F--%H-%M-%S)
+S3PREFIX="s3://masters-thesis-mk/results/iperf-bench-$SERVER_IP-$TIMESTAMP"
+OUTPUT="results.json"
+
+function upload_s3() {
+  echo "uploading"
+  aws s3 cp $OUTPUT "$S3PREFIX/json-iperf-$(date +%F--%H-%M-%S).json"
+}
+
+function trap_exit() {
+  # not uploading last file to s3 here, as it's probably not done and corrupted
+  exit
+}
+
+trap trap_exit SIGINT
+
+while true; do
+  echo "[" > $OUTPUT
+  for ((i=0; i<$PER_FILE_ENTRIES; ++i)); do
+    iperf3 -c $SERVER_IP -P $CORE_COUNT --json --logfile $OUTPUT
+    [[ $i != $PER_FILE_ENTRIES ]] && echo "," >> $OUTPUT
+  done
+  echo "]" >> $OUTPUT
+  upload_s3
+done
+
+# shutdown to terminate the instance after the test is complete
+$TERMCMD

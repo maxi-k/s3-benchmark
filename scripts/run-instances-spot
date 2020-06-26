@@ -34,7 +34,8 @@ else
 fi
 
 # Base64-Encode the userdata start file for the json
-USERDATA_STR=$(base64 -w0 userdata)
+USERDATA_FILE=${1:-"userdata-s3"}
+USERDATA_STR=$(base64 -w0 $USERDATA_FILE)
 
 echo "Re-creating temporary configuration directory"
 confdir=./inst-tmp
