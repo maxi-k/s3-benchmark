@@ -3,7 +3,7 @@
 [ ! -f $1 ] && echo "File does not exist" >&2 && exit 2
 
 FILE=$1
-EDIT=${2:-"sc-im"}
+EDIT=${2:-"soffice"}
 
 FILENAME=$(basename -- "$FILE")
 FILEPATH=/tmp/with-header-$FILENAME
